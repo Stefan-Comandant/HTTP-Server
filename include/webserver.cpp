@@ -1,12 +1,4 @@
 #include "webserver.h"
-#include <map>
-#include <regex>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <variant>
-#include <vector>
-#include <winsock2.h>
 
 bool WebServer::file_exists(const std::string file_name,
                             const std::string dir_name) {
@@ -125,6 +117,8 @@ WebServer::Context::Context(SOCKET *sock, Request *request,
       m_response_content_type(response_content_type), params(params) {
   this->m_status = OK;
 }
+
+void WebServer::Context::Next() { this->run_next_handler = true; };
 
 WebServer::Context *
 WebServer::Context::set_status(const WebServer::HTTPCodes status) {
@@ -252,11 +246,17 @@ void WebServer::Router::handle_request(
 
   if (!requested_path.is_dynamic) {
     // this->middlewares.find()
-    this->execute_middlewares(requested_path.path, false,
-                              Context(&sock, &request, this->m_file_directory));
+    Context context(&sock, &request, this->m_file_directory);
+
+    bool run_main_handler =
+        this->execute_middlewares(requested_path.path, false, context);
+
+    if (!run_main_handler) {
+      return;
+    }
 
     Context ctx(&sock, &request, this->m_file_directory);
-    requested_path.main_handler(ctx);
+    requested_path.main_handler(&ctx);
     return;
   }
 
@@ -279,12 +279,15 @@ void WebServer::Router::handle_request(
     params.insert_or_assign(key, match->str());
   }
 
-  this->execute_middlewares(
-      requested_path.path, true,
-      Context(&sock, &request, this->m_file_directory, params));
+  Context context(&sock, &request, this->m_file_directory, params);
 
-  Context ctx(&sock, &request, this->m_file_directory, params);
-  requested_path.main_handler(ctx);
+  bool run_main_handler =
+      this->execute_middlewares(requested_path.path, true, context);
+  if (!run_main_handler) {
+    return;
+  }
+
+  requested_path.main_handler(&context);
 }
 
 std::string WebServer::Router::trim(const std::string &str) {
@@ -412,8 +415,8 @@ void WebServer::Router::register_path(const std::string path,
       path, Path{method, path, handler, regex, true, parameter_names});
 }
 
-void WebServer::Router::execute_middlewares(const std::string path,
-                                            bool is_dynamic, Context context) {
+bool WebServer::Router::execute_middlewares(const std::string path,
+                                            bool is_dynamic, Context &context) {
   for (std::map<std::string, std::vector<PathHandler *>>::const_iterator it =
            this->m_middlewares.begin();
        it != this->m_middlewares.end(); it++) {
@@ -425,9 +428,16 @@ void WebServer::Router::execute_middlewares(const std::string path,
     for (std::vector<PathHandler *>::const_iterator handler =
              it->second.begin();
          handler != it->second.end(); handler++) {
-      (*handler.base())(context);
+      (*handler.base())(&context);
+      if (!context.run_next_handler) {
+        return false;
+      }
+
+      context.run_next_handler = false;
     }
   }
+
+  return true;
 }
 
 WebServer::Router::Router() {
@@ -453,7 +463,7 @@ void WebServer::Router::Use(std::vector<PathHandler *> handlers) {
   const std::string path_prefix = "/";
 
   this->m_middlewares[path_prefix].insert(m_middlewares.at(path_prefix).end(),
-                                          handlers.begin(), handlers.begin());
+                                          handlers.begin(), handlers.end());
 }
 
 void WebServer::Router::Use(const std::string path_prefix,

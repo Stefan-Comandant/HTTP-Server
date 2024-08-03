@@ -1,8 +1,6 @@
 #include "../include/libs.h"
 #include "../include/webserver.h"
 // #include "../json/single_include/nlohmann/json.hpp"
-#include <cstdio>
-#include <memory>
 
 // using nlohmann::json;
 
@@ -17,11 +15,21 @@
 //   }
 // };
 
-void middleware(WebServer::Context ctx) {
-  std::cout << "This is the middleware\n";
-  std::cout << "This is middleware: The name " << ctx.param("name")
+void middleware1(WebServer::Context *ctx) {
+  std::cout << "This is the middleware1\n";
+  std::cout << "This is middleware1: The name " << ctx->param("name")
             << " is a trash name\n";
+
+  ctx->Next();
 };
+
+void middleware2(WebServer::Context *ctx) {
+  std::cout << "This is the middleware2\n";
+  std::cout << "This is middleware2: The name " << ctx->param("name")
+            << " is a trash name\n";
+
+  ctx->Next();
+}
 
 int main() {
   std::unique_ptr<WebServer::Router> router =
@@ -29,43 +37,43 @@ int main() {
 
   router->set_file_source_directory("public");
 
-  router->Use("/people", {middleware});
+  router->Use("/people", {middleware1, middleware2});
 
-  router->Get("/", [](WebServer::Context ctx) {
+  router->Get("/", [](WebServer::Context *ctx) {
     std::cout << "Lois, I\'m getting a request!\n";
-    ctx.send_file("index.html");
+    ctx->send_file("index.html");
   });
 
-  router->Get("/hello", [](WebServer::Context ctx) {
-    ctx.set_status(WebServer::OK)->send_file("hello.html");
+  router->Get("/hello", [](WebServer::Context *ctx) {
+    ctx->set_status(WebServer::OK)->send_file("hello.html");
   });
 
-  router->Post("/say", [](WebServer::Context ctx) {
+  router->Post("/say", [](WebServer::Context *ctx) {
     printf("Gettign a request at /say\n");
 
     std::string body = "You just said \"";
-    body.append(ctx.request->body.data());
+    body.append(ctx->request->body.data());
     body.append("\". What the fuck is wrong with you?");
 
-    ctx.set_status(WebServer::OK)->send_string(body);
+    ctx->set_status(WebServer::OK)->send_string(body);
   });
 
   router->Get("/bitch",
-              [](WebServer::Context ctx) { ctx.send_file("bitches.png"); });
+              [](WebServer::Context *ctx) { ctx->send_file("bitches.png"); });
 
-  router->Get("/bitchless/nigga", [](WebServer::Context ctx) {
-    ctx.send_string("You have no dick, no balls and no bootyhole");
+  router->Get("/bitchless/nigga", [](WebServer::Context *ctx) {
+    ctx->send_string("You have no dick, no balls and no bootyhole");
   });
 
-  router->Get("/people/:name", [](WebServer::Context ctx) {
-    std::cout << "The name " << ctx.param("name") << " is trash\n";
+  router->Get("/people/:name", [](WebServer::Context *ctx) {
+    std::cout << "The name " << ctx->param("name") << " is trash\n";
 
-    ctx.send_file("./discrimination.html");
+    ctx->send_file("./discrimination.html");
   });
 
-  router->Get("/users/:userID/friends/:friendID", [](WebServer::Context ctx) {
-    ctx.send_string("Friend with id " + ctx.param("friendID") +
-                    " of user with id " + ctx.param("userID"));
+  router->Get("/users/:userID/friends/:friendID", [](WebServer::Context *ctx) {
+    ctx->send_string("Friend with id " + ctx->param("friendID") +
+                     " of user with id " + ctx->param("userID"));
   });
 
   int error = router->listen(1234, "127.0.0.1");

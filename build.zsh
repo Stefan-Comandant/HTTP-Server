@@ -1,1 +1,1 @@
-g++.exe ./include/webserver.cpp ./src/server.cpp -lws2_32 -o ./build/server
+g++.exe -std=c++20 ./include/webserver.cpp ./src/server.cpp -lws2_32 -o ./build/server

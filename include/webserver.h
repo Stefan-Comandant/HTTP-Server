@@ -1,7 +1,4 @@
 #include "libs.h"
-#include <map>
-#include <string>
-#include <unordered_map>
 
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
@@ -182,13 +179,15 @@ public:
 };
 
 class Context {
+  friend class Router;
+
 private:
-  // std::vector<PathHandler *> handlers;
   std::map<std::string, std::string> params;
   WebServer::HTTPCodes m_status = WebServer::OK;
   SOCKET *sock;
   std::string m_file_directory;
   std::string m_response_content_type = "";
+  bool run_next_handler = true;
 
 public:
   WebServer::Request *request;
@@ -202,7 +201,7 @@ public:
   void send_file(const std::string file_path);
 };
 
-typedef void PathHandler(Context);
+typedef void PathHandler(Context *);
 
 struct Path {
 public:
@@ -240,8 +239,8 @@ private:
                             std::vector<std::string> *parameter_names);
   void register_path(const std::string path, PathHandler *handler,
                      const std::string method);
-  void execute_middlewares(const std::string path, bool is_dynamic,
-                           Context context);
+  bool execute_middlewares(const std::string path, bool is_dynamic,
+                           Context &context);
 
 public:
   Router();
