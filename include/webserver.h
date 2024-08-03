@@ -201,6 +201,7 @@ public:
   int send_string(const std::string str);
   void send_file(const std::string file_path);
 };
+
 typedef void PathHandler(Context);
 
 struct Path {
@@ -226,7 +227,7 @@ private:
   struct sockaddr_in m_addr;
   std::unordered_map<std::string, Path> m_paths = {};
   std::string m_file_directory;
-  std::map<std::string, std::vector<PathHandler *>> middlewares;
+  std::map<std::string, std::vector<PathHandler *>> m_middlewares;
 
 private:
   int accept(struct sockaddr_in *addr, int *addrlen) const;
@@ -239,6 +240,8 @@ private:
                             std::vector<std::string> *parameter_names);
   void register_path(const std::string path, PathHandler *handler,
                      const std::string method);
+  void execute_middlewares(const std::string path, bool is_dynamic,
+                           Context context);
 
 public:
   Router();

@@ -23,6 +23,13 @@ int main() {
 
   router->set_file_source_directory("public");
 
+  router->Use("/", {
+                       [](WebServer::Context ctx) {
+                         std::cout << "This is the middleware\n";
+                         // ctx.send_string("Hello");
+                       },
+                   });
+
   router->Get("/", [](WebServer::Context ctx) {
     std::cout << "Lois, I\'m getting a request!\n";
     ctx.send_file("index.html");

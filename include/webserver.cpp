@@ -3,7 +3,9 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 #include <winsock2.h>
 
 bool WebServer::file_exists(const std::string file_name,
@@ -249,6 +251,10 @@ void WebServer::Router::handle_request(
   }
 
   if (!requested_path.is_dynamic) {
+    // this->middlewares.find()
+    this->execute_middlewares(requested_path.path, false,
+                              Context(&sock, &request, this->m_file_directory));
+
     Context ctx(&sock, &request, this->m_file_directory);
     requested_path.main_handler(ctx);
     return;
@@ -272,6 +278,9 @@ void WebServer::Router::handle_request(
     const std::string key = requested_path.params.at(index - offset);
     params.insert_or_assign(key, match->str());
   }
+
+  this->execute_middlewares(requested_path.path, true,
+                            Context(&sock, &request, this->m_file_directory));
 
   Context ctx(&sock, &request, this->m_file_directory, params);
   requested_path.main_handler(ctx);
@@ -354,7 +363,7 @@ std::regex
 WebServer::Router::get_path_regex(const std::string path,
                                   std::vector<std::string> *parameter_names) {
   bool is_valid_path = this->isValidPath(path);
-  if (!is_valid_path)
+  if (!is_valid_path && path.compare("/") != 0)
     return {};
 
   // Return back the given path if there is no dynamic segment
@@ -402,6 +411,24 @@ void WebServer::Router::register_path(const std::string path,
       path, Path{method, path, handler, regex, true, parameter_names});
 }
 
+void WebServer::Router::execute_middlewares(const std::string path,
+                                            bool is_dynamic, Context context) {
+  for (std::map<std::string, std::vector<PathHandler *>>::const_iterator it =
+           this->m_middlewares.begin();
+       it != this->m_middlewares.end(); it++) {
+
+    if (path.find_first_of(it->first) != 0) {
+      continue;
+    }
+
+    for (std::vector<PathHandler *>::const_iterator handler =
+             it->second.begin();
+         handler != it->second.end(); handler++) {
+      (*handler.base())(context);
+    }
+  }
+}
+
 WebServer::Router::Router() {
   WORD wVersionRequested = MAKEWORD(2, 2);
 
@@ -423,12 +450,17 @@ WebServer::Router::~Router() {
 
 void WebServer::Router::Use(std::vector<PathHandler *> handlers) {
   const std::string path_prefix = "/";
-  this->middlewares[path_prefix].insert(middlewares.at(path_prefix).end(),
-                                        handlers.begin(), handlers.begin());
+
+  this->m_middlewares[path_prefix].insert(m_middlewares.at(path_prefix).end(),
+                                          handlers.begin(), handlers.begin());
 }
 
 void WebServer::Router::Use(const std::string path_prefix,
-                            std::vector<PathHandler *> handlers) {}
+                            std::vector<PathHandler *> handlers) {
+  std::cout << "Prefix: " << path_prefix << '\n';
+  this->m_middlewares[path_prefix].insert(m_middlewares.at(path_prefix).end(),
+                                          handlers.begin(), handlers.end());
+}
 
 int WebServer::Router::listen(const int port, const char *address) {
   this->m_addr.sin_family = AF_INET;
