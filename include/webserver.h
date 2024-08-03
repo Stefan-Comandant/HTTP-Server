@@ -1,4 +1,6 @@
 #include "libs.h"
+#include <chrono>
+#include <ctime>
 
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
@@ -176,6 +178,26 @@ public:
   std::string host;
   std::map<std::string, std::string> headers;
   std::string body;
+};
+
+struct CookieConfig {
+  std::string name;
+  std::string value;
+  std::time_t expires;
+  std::chrono::seconds max_age;
+  std::string domain;
+  std::string path;
+  bool secure;
+  bool HTTP_only;
+  std::string same_site;
+  std::string priority;
+};
+
+class Cookie {
+public:
+  CookieConfig config;
+  Cookie(CookieConfig config);
+  std::string String() const;
 };
 
 class Context {
