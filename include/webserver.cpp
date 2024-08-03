@@ -20,7 +20,7 @@ bool WebServer::file_exists(const std::string file_name,
   }
 
   for (std::filesystem::directory_entry p :
-       *new std::filesystem::directory_iterator(dir)) {
+       std::filesystem::directory_iterator(dir)) {
     if (p.is_directory()) {
       if (file_exists(file_name, p.path().generic_string())) {
         return true;
@@ -31,8 +31,7 @@ bool WebServer::file_exists(const std::string file_name,
     size_t pos = p.path().generic_string().find_last_of("/");
     std::string file = p.path().generic_string().substr(pos + 1);
 
-    if (file.compare(*new std::string(file_name.substr(file_name_pos + 1))) ==
-        0) {
+    if (file.compare(std::string(file_name.substr(file_name_pos + 1))) == 0) {
       return true;
     }
   };
@@ -159,12 +158,12 @@ WebServer::Path::Path(){};
 WebServer::Path::Path(std::string method, std::string path,
                       PathHandler *handler, std::regex regex, bool is_dynamic,
                       std::vector<std::string> params)
-    : method(method), path(path), Handler(handler), regex(regex),
+    : method(method), path(path), main_handler(handler), regex(regex),
       is_dynamic(is_dynamic), params(params){};
 
 bool WebServer::Path::empty() const {
   return (this->path.empty() && this->method.empty() &&
-          this->Handler == nullptr);
+          this->main_handler == nullptr);
 };
 
 int WebServer::Router::accept(struct sockaddr_in *addr, int *addrlen) const {
@@ -223,6 +222,7 @@ void WebServer::Router::handle_request(
       is_matching_path = std::regex_match(request.path, pair.second.regex);
       if (is_matching_path) {
         requested_path = pair.second;
+        break;
       }
     }
   } else {
@@ -250,7 +250,7 @@ void WebServer::Router::handle_request(
 
   if (!requested_path.is_dynamic) {
     Context ctx(&sock, &request, this->m_file_directory);
-    requested_path.Handler(ctx);
+    requested_path.main_handler(ctx);
     return;
   }
 
@@ -274,7 +274,7 @@ void WebServer::Router::handle_request(
   }
 
   Context ctx(&sock, &request, this->m_file_directory, params);
-  requested_path.Handler(ctx);
+  requested_path.main_handler(ctx);
 }
 
 std::string WebServer::Router::trim(const std::string &str) {
@@ -350,6 +350,58 @@ bool WebServer::Router::set_socket_blocking(SOCKET sock, bool blocking) {
   return (ioctlsocket(sock, FIONBIO, &nonblocking_long) != SOCKET_ERROR);
 }
 
+std::regex
+WebServer::Router::get_path_regex(const std::string path,
+                                  std::vector<std::string> *parameter_names) {
+  bool is_valid_path = this->isValidPath(path);
+  if (!is_valid_path)
+    return {};
+
+  // Return back the given path if there is no dynamic segment
+  if (path.find_first_of(":") == std::variant_npos) {
+    return std::regex(path);
+  }
+
+  std::stringstream stream(path);
+  std::string route;
+  std::string path_cpy = path;
+
+  while (std::getline(stream, route, '/')) {
+    if (route.size() <= 0) {
+      continue;
+    }
+
+    const size_t colon_pos = route.find(':', 0);
+
+    if (colon_pos == std::variant_npos) {
+      continue;
+    }
+
+    const size_t pos =
+        path_cpy.find(route) == std::variant_npos ? -1 : path_cpy.find(route);
+
+    const std::string reg = R"(([A-z0-9]+))";
+    path_cpy.erase(pos, route.size());
+    path_cpy.insert(pos, reg);
+
+    // Remove the ":" char from the route
+    parameter_names->push_back(route.substr(1));
+  }
+
+  return std::regex(path_cpy);
+};
+
+void WebServer::Router::register_path(const std::string path,
+                                      PathHandler *handler,
+                                      const std::string method) {
+  std::vector<std::string> parameter_names;
+
+  std::regex regex = this->get_path_regex(path, &parameter_names);
+
+  this->m_paths.insert_or_assign(
+      path, Path{method, path, handler, regex, true, parameter_names});
+}
+
 WebServer::Router::Router() {
   WORD wVersionRequested = MAKEWORD(2, 2);
 
@@ -368,6 +420,15 @@ WebServer::Router::~Router() {
   closesocket(this->m_sock);
   WSACleanup();
 };
+
+void WebServer::Router::Use(std::vector<PathHandler *> handlers) {
+  const std::string path_prefix = "/";
+  this->middlewares[path_prefix].insert(middlewares.at(path_prefix).end(),
+                                        handlers.begin(), handlers.begin());
+}
+
+void WebServer::Router::Use(const std::string path_prefix,
+                            std::vector<PathHandler *> handlers) {}
 
 int WebServer::Router::listen(const int port, const char *address) {
   this->m_addr.sin_family = AF_INET;
@@ -432,78 +493,31 @@ bool WebServer::Router::isValidPath(const std::string path) {
 }
 
 void WebServer::Router::Get(const std::string path, PathHandler *handler) {
-  bool isMatch = this->isValidPath(path);
-  if (!isMatch)
-    return;
-
-  std::stringstream stream(path);
-  std::string route;
-  std::string path_cpy = path;
-  std::vector<std::string> params;
-
-  if (path.find_first_of(":") == std::variant_npos) {
-    this->m_paths.insert_or_assign(
-        path, *new Path{"GET", path, handler, *new std::regex(path), false});
-    return;
-  }
-
-  while (std::getline(stream, route, '/')) {
-    if (route.size() <= 0) {
-      continue;
-    }
-
-    const size_t colon_pos = route.find(':', 0);
-
-    if (colon_pos == std::variant_npos) {
-      continue;
-    }
-
-    const size_t pos =
-        path_cpy.find(route) == std::variant_npos ? -1 : path_cpy.find(route);
-
-    const std::string reg = R"(([A-z0-9]+))";
-    path_cpy.erase(pos, route.size());
-    path_cpy.insert(pos, reg);
-
-    // Remove the ":" char from the route
-    params.push_back(route.substr(1));
-  }
-
-  this->m_paths.insert_or_assign(
-      path,
-      *new Path{"GET", path, handler, *new std::regex(path_cpy), true, params});
+  this->register_path(path, handler, "GET");
 };
 void WebServer::Router::Head(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("HEAD", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "HEAD");
 };
 void WebServer::Router::Post(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("POST", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "POST");
 };
 void WebServer::Router::Put(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("PUT", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "PUT");
 };
 void WebServer::Router::Delete(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("DELETE", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "DELETE");
 };
 void WebServer::Router::Connect(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("CONNECT", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "CONNECT");
 };
 void WebServer::Router::Options(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("OPTIONS", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "OPTIONS");
 };
 void WebServer::Router::Trace(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("TRACE", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "TRACE");
 };
 void WebServer::Router::Patch(const std::string path, PathHandler *handler) {
-  this->m_paths.insert_or_assign(
-      path, *new Path("PATCH", path, handler, *new std::regex(path), false));
+  this->register_path(path, handler, "PATCH");
 };
 void WebServer::Router::set_file_source_directory(const std::string dir) {
   this->m_file_directory = dir;

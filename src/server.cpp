@@ -1,23 +1,25 @@
 #include "../include/libs.h"
 #include "../include/webserver.h"
-#include "../json/single_include/nlohmann/json.hpp"
+// #include "../json/single_include/nlohmann/json.hpp"
 #include <cstdio>
+#include <memory>
 
-using nlohmann::json;
+// using nlohmann::json;
 
-struct Person {
-  std::string name;
-  int age;
-  void to_json(json &j) {
-    j = json{
-        {"name", this->name},
-        {"age", this->age},
-    };
-  }
-};
+// struct Person {
+//   std::string name;
+//   int age;
+//   void to_json(json &j) {
+//     j = json{
+//         {"name", this->name},
+//         {"age", this->age},
+//     };
+//   }
+// };
 
 int main() {
-  WebServer::Router *router = new WebServer::Router();
+  std::unique_ptr<WebServer::Router> router =
+      std::make_unique<WebServer::Router>();
 
   router->set_file_source_directory("public");
 
@@ -62,8 +64,6 @@ int main() {
   if (error == SOCKET_ERROR) {
     printf("ERROR::Listen failed: %s\n", WSAGetLastError());
   }
-
-  delete router;
 
   // Person person;
   // person.age = 56;

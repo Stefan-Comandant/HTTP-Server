@@ -180,8 +180,10 @@ public:
   std::map<std::string, std::string> headers;
   std::string body;
 };
+
 class Context {
 private:
+  // std::vector<PathHandler *> handlers;
   std::map<std::string, std::string> params;
   WebServer::HTTPCodes m_status = WebServer::OK;
   SOCKET *sock;
@@ -193,12 +195,12 @@ public:
   Context(SOCKET *sock, Request *request, std::string files_directory,
           std::map<std::string, std::string> params = {},
           std::string response_content_type = "text/plain");
+  void Next();
   Context *set_status(const WebServer::HTTPCodes status);
   std::string param(const std::string name);
   int send_string(const std::string str);
   void send_file(const std::string file_path);
 };
-
 typedef void PathHandler(Context);
 
 struct Path {
@@ -208,7 +210,7 @@ public:
   std::regex regex;
   bool is_dynamic = false;
   std::vector<std::string> params;
-  PathHandler *Handler;
+  PathHandler *main_handler;
   Path();
   Path(std::string method, std::string path, PathHandler *handler,
        std::regex regex, bool is_dynamic = false,
@@ -224,6 +226,7 @@ private:
   struct sockaddr_in m_addr;
   std::unordered_map<std::string, Path> m_paths = {};
   std::string m_file_directory;
+  std::map<std::string, std::vector<PathHandler *>> middlewares;
 
 private:
   int accept(struct sockaddr_in *addr, int *addrlen) const;
@@ -232,10 +235,16 @@ private:
   std::string trim(const std::string &str);
   Request parse_request(const std::string request);
   bool set_socket_blocking(SOCKET sock, bool blocking);
+  std::regex get_path_regex(const std::string path,
+                            std::vector<std::string> *parameter_names);
+  void register_path(const std::string path, PathHandler *handler,
+                     const std::string method);
 
 public:
   Router();
   ~Router();
+  void Use(std::vector<PathHandler *> handlers);
+  void Use(const std::string path_prefix, std::vector<PathHandler *> handlers);
   int listen(const int port, const char *address);
   bool isValidPath(const std::string path);
   void Get(const std::string path, PathHandler *handler);
