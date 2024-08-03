@@ -279,8 +279,9 @@ void WebServer::Router::handle_request(
     params.insert_or_assign(key, match->str());
   }
 
-  this->execute_middlewares(requested_path.path, true,
-                            Context(&sock, &request, this->m_file_directory));
+  this->execute_middlewares(
+      requested_path.path, true,
+      Context(&sock, &request, this->m_file_directory, params));
 
   Context ctx(&sock, &request, this->m_file_directory, params);
   requested_path.main_handler(ctx);
@@ -417,7 +418,7 @@ void WebServer::Router::execute_middlewares(const std::string path,
            this->m_middlewares.begin();
        it != this->m_middlewares.end(); it++) {
 
-    if (path.find_first_of(it->first) != 0) {
+    if (path.find(it->first) != 0) {
       continue;
     }
 
@@ -457,7 +458,6 @@ void WebServer::Router::Use(std::vector<PathHandler *> handlers) {
 
 void WebServer::Router::Use(const std::string path_prefix,
                             std::vector<PathHandler *> handlers) {
-  std::cout << "Prefix: " << path_prefix << '\n';
   this->m_middlewares[path_prefix].insert(m_middlewares.at(path_prefix).end(),
                                           handlers.begin(), handlers.end());
 }

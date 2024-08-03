@@ -17,18 +17,19 @@
 //   }
 // };
 
+void middleware(WebServer::Context ctx) {
+  std::cout << "This is the middleware\n";
+  std::cout << "This is middleware: The name " << ctx.param("name")
+            << " is a trash name\n";
+};
+
 int main() {
   std::unique_ptr<WebServer::Router> router =
       std::make_unique<WebServer::Router>();
 
   router->set_file_source_directory("public");
 
-  router->Use("/", {
-                       [](WebServer::Context ctx) {
-                         std::cout << "This is the middleware\n";
-                         // ctx.send_string("Hello");
-                       },
-                   });
+  router->Use("/people", {middleware});
 
   router->Get("/", [](WebServer::Context ctx) {
     std::cout << "Lois, I\'m getting a request!\n";
