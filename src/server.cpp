@@ -83,7 +83,7 @@ int main() {
 
   // Person person;
   // person.age = 56;
-  // person.name = "Adolf Hitler";
+  // person.name = "Person";
 
   // json j;
   // person.to_json(j);
