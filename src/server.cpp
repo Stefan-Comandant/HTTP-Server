@@ -58,17 +58,17 @@ int main() {
     ctx->set_status(WebServer::OK)->send_string(body);
   });
 
-  router->Get("/bitch",
+  router->Get("/image",
               [](WebServer::Context *ctx) { ctx->send_file("bitches.png"); });
 
-  router->Get("/bitchless/nigga", [](WebServer::Context *ctx) {
+  router->Get("/json", [](WebServer::Context *ctx) {
     ctx->send_string("You have no dick, no balls and no bootyhole");
   });
 
   router->Get("/people/:name", [](WebServer::Context *ctx) {
     std::cout << "The name " << ctx->param("name") << " is trash\n";
 
-    ctx->send_file("./discrimination.html");
+    ctx->send_file("./spinner.html");
   });
 
   router->Get("/users/:userID/friends/:friendID", [](WebServer::Context *ctx) {
