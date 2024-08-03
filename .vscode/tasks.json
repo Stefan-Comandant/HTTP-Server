@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "C++ Build Task",
+      "type": "shell",
+      "command": "g++.exe ./include/webserver.cpp ./src/server.cpp -lws2_32 -o ./build/server",
+      "options": {},
+      "problemMatcher": ["$gcc"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

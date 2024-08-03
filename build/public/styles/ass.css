@@ -1,0 +1,16 @@
+body {
+  background: pink;
+}
+
+h1 {
+  color: red;
+}
+
+h1::selection {
+  background: black;
+  cursor: pointer;
+}
+
+h1::selection::after {
+  content: "/";
+}
