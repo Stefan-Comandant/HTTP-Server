@@ -1,6 +1,7 @@
 #include "libs.h"
 #include <chrono>
 #include <ctime>
+#include <vector>
 
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
@@ -165,18 +166,22 @@ std::vector<char> get_file_contents(const std::string file_path,
                                     std::string *content_type,
                                     const std::string file_directory);
 
-std::string make_response_body(const WebServer::HTTPCodes status_code,
-                               const std::string body,
-                               const std::string content_type);
-std::string make_response_body(const WebServer::HTTPCodes status_code,
-                               const std::vector<char> body,
-                               const std::string content_type);
+std::string make_response_body(
+    const WebServer::HTTPCodes status_code, const std::string body,
+    const std::map<std::string, std::vector<std::string>> headers,
+    const std::string content_type);
+std::string make_response_body(
+    const WebServer::HTTPCodes status_code, const std::vector<char> body,
+    const std::map<std::string, std::vector<std::string>> headers,
+    const std::string content_type);
+std::string trim(const std::string &str);
+
 struct Request {
 public:
   std::string method;
   std::string path;
   std::string host;
-  std::map<std::string, std::string> headers;
+  std::map<std::string, std::vector<std::string>> headers;
   std::string body;
 };
 
@@ -205,6 +210,7 @@ class Context {
 
 private:
   std::map<std::string, std::string> params;
+  std::map<std::string, std::vector<std::string>> response_headers;
   WebServer::HTTPCodes m_status = WebServer::OK;
   SOCKET *sock;
   std::string m_file_directory;
@@ -221,6 +227,9 @@ public:
   std::string param(const std::string name);
   int send_string(const std::string str);
   void send_file(const std::string file_path);
+  std::string cookies(const std::string name);
+  void add_header(const std::string header, const std::string value);
+  void set_cookie(const CookieConfig cookie);
 };
 
 typedef void PathHandler(Context *);
@@ -254,7 +263,6 @@ private:
   int accept(struct sockaddr_in *addr, int *addrlen) const;
   void handle_request(SOCKET sock,
                       const std::unordered_map<std::string, Path> &paths);
-  std::string trim(const std::string &str);
   Request parse_request(const std::string request);
   bool set_socket_blocking(SOCKET sock, bool blocking);
   std::regex get_path_regex(const std::string path,

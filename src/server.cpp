@@ -1,35 +1,12 @@
 #include "../include/libs.h"
 #include "../include/webserver.h"
-// #include "../json/single_include/nlohmann/json.hpp"
 
-// using nlohmann::json;
-
-// struct Person {
-//   std::string name;
-//   int age;
-//   void to_json(json &j) {
-//     j = json{
-//         {"name", this->name},
-//         {"age", this->age},
-//     };
-//   }
-// };
-
-void middleware1(WebServer::Context *ctx) {
-  std::cout << "This is the middleware1\n";
-  std::cout << "This is middleware1: The name " << ctx->param("name")
+void middleware(WebServer::Context *ctx) {
+  std::cout << "This is middleware: The name " << ctx->param("name")
             << " is a trash name\n";
 
   ctx->Next();
 };
-
-void middleware2(WebServer::Context *ctx) {
-  std::cout << "This is the middleware2\n";
-  std::cout << "This is middleware2: The name " << ctx->param("name")
-            << " is a trash name\n";
-
-  ctx->Next();
-}
 
 int main() {
   std::unique_ptr<WebServer::Router> router =
@@ -37,7 +14,7 @@ int main() {
 
   router->set_file_source_directory("public");
 
-  router->Use("/people", {middleware1, middleware2});
+  router->Use("/people", {middleware});
 
   router->Get("/", [](WebServer::Context *ctx) {
     std::cout << "Lois, I\'m getting a request!\n";
@@ -76,22 +53,17 @@ int main() {
                      " of user with id " + ctx->param("userID"));
   });
 
+  router->Get("/cookie", [](WebServer::Context *ctx) {
+    std::string cookie = ctx->cookies("old_cookie");
+    std::cout << "Cookie value: " << cookie << '\n';
+
+    ctx->send_string("Cookie");
+  });
+
   int error = router->listen(1234, "127.0.0.1");
   if (error == SOCKET_ERROR) {
     printf("ERROR::Listen failed: %s\n", WSAGetLastError());
   }
 
-  // Person person;
-  // person.age = 56;
-  // person.name = "Person";
-
-  // json j;
-  // person.to_json(j);
-
-  // printf("Value: %s\n", j.find("name").value().find("name")->value(""));
-  // std::string name = j.find("name").value();
-  // printf("Name: %s\n", name.data());
-
-  // json::to_ubjson();
   return 0;
 }

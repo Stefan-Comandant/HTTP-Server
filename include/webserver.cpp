@@ -1,4 +1,5 @@
 #include "webserver.h"
+#include <vector>
 
 bool WebServer::file_exists(const std::string file_name,
                             const std::string dir_name) {
@@ -85,25 +86,44 @@ WebServer::get_file_contents(const std::string file_path,
   return buffer;
 };
 
-std::string
-WebServer::make_response_body(const WebServer::HTTPCodes status_code,
-                              const std::string body,
-                              const std::string content_type) {
-  std::string response =
-      "HTTP/1.1 " + std::to_string(status_code) + " " +
-      status_texts.at(status_code) + "\r\n" + "Content-Type: " + content_type +
-      "\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
+std::string WebServer::make_response_body(
+    const WebServer::HTTPCodes status_code, const std::string body,
+    const std::map<std::string, std::vector<std::string>> headers,
+    const std::string content_type) {
+  std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
+                         status_texts.at(status_code) + "\r\n" +
+                         "Content-Type: " + content_type +
+                         "\r\nContent-Length: " + std::to_string(body.size());
+
+  for (std::pair<std::string, std::vector<std::string>> pair : headers) {
+    for (std::string header_value : pair.second) {
+      response.append("\r\n" + pair.first + ": ");
+      response.append(header_value);
+    }
+  }
+
+  response.append("\r\n\r\n" + body);
+
   return response;
 };
 
-std::string
-WebServer::make_response_body(const WebServer::HTTPCodes status_code,
-                              const std::vector<char> body,
-                              const std::string content_type) {
-  std::string response =
-      "HTTP/1.1 " + std::to_string(status_code) + " " +
-      status_texts.at(status_code) + "\r\n" + "Content-Type: " + content_type +
-      "\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n";
+std::string WebServer::make_response_body(
+    const WebServer::HTTPCodes status_code, const std::vector<char> body,
+    const std::map<std::string, std::vector<std::string>> headers,
+    const std::string content_type) {
+  std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
+                         status_texts.at(status_code) + "\r\n" +
+                         "Content-Type: " + content_type +
+                         "\r\nContent-Length: " + std::to_string(body.size());
+
+  for (std::pair<std::string, std::vector<std::string>> pair : headers) {
+    for (std::string header_value : pair.second) {
+      response.append("\r\n" + pair.first + ": ");
+      response.append(header_value);
+    }
+  }
+
+  response.append("\r\n\r\n");
   response.append(body.begin(), body.end());
 
   return response;

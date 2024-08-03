@@ -25,7 +25,8 @@ std::string WebServer::Context::param(const std::string name) {
 }
 
 int WebServer::Context::send_string(const std::string str) {
-  std::string response = make_response_body(this->m_status, str, "text/plain");
+  std::string response = make_response_body(
+      this->m_status, str, this->response_headers, "text/plain");
 
   return send(*this->sock, response.data(), response.size(), 0);
 };
@@ -35,6 +36,7 @@ void WebServer::Context::send_file(const std::string file_path) {
       file_path, &this->m_response_content_type, this->m_file_directory);
 
   std::string response =
-      make_response_body(this->m_status, body, this->m_response_content_type);
+      make_response_body(this->m_status, body, this->response_headers,
+                         this->m_response_content_type);
   send(*this->sock, response.data(), response.size(), 0);
 };

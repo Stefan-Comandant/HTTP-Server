@@ -1,5 +1,6 @@
 #include "libs.h"
 #include "webserver.h"
+#include <string>
 
 int WebServer::Router::accept(struct sockaddr_in *addr, int *addrlen) const {
   return ::accept(this->m_sock, (SOCKADDR *)addr, addrlen);
@@ -44,7 +45,7 @@ void WebServer::Router::handle_request(
 
     if (!body.empty()) {
       std::string response =
-          make_response_body(WebServer::OK, body, content_type);
+          make_response_body(WebServer::OK, body, {}, content_type);
       send(sock, response.data(), response.size(), 0);
       is_matching_path = true;
     }
@@ -129,7 +130,7 @@ void WebServer::Router::handle_request(
   requested_path.main_handler(&context);
 }
 
-std::string WebServer::Router::trim(const std::string &str) {
+std::string WebServer::trim(const std::string &str) {
   size_t start = 0, end = str.length();
 
   // Trim leading whitespace
@@ -152,7 +153,7 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
   Request processed_request;
 
   bool isFirst = true;
-  while (getline(stream, header, '\r')) {
+  while (std::getline(stream, header, '\r')) {
     if (header.empty()) {
       break;
     }
@@ -165,16 +166,17 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
     }
 
     size_t pos = header.find(':');
-    if (pos != std::string::npos) {
-      std::string key = this->trim(header.substr(0, pos));
-      std::string value = this->trim(header.substr(pos + 1));
-      if (key == "Host") {
-        processed_request.host = value;
-        continue;
-      }
+    if (pos == std::string::npos)
+      continue;
 
-      processed_request.headers[key] = value;
+    std::string key = trim(header.substr(0, pos));
+    std::string value = trim(header.substr(pos + 1));
+    if (key == "Host") {
+      processed_request.host = value;
+      continue;
     }
+
+    processed_request.headers[key].push_back(value);
   }
 
   std::array<std::string, 5> methods = {"GET", "DELETE", "TRACE", "OPTIONS",
@@ -190,8 +192,9 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
   }
 
   size_t body_position = request.size() - 1;
-  body_position = request.size() -
-                  std::stoi(processed_request.headers.at("content-length"));
+  body_position =
+      request.size() -
+      std::stoi(processed_request.headers.at("content-length").at(0));
   processed_request.body = request.substr(body_position);
 
   return processed_request;
