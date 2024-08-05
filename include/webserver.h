@@ -1,6 +1,8 @@
 #include "libs.h"
 #include <chrono>
 #include <ctime>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifndef WEBSERVER_H
@@ -218,12 +220,13 @@ private:
   bool run_next_handler = true;
 
 public:
-  WebServer::Request *request;
+  Request *request;
+  std::string raw_request;
   Context(SOCKET *sock, Request *request, std::string files_directory,
           std::map<std::string, std::string> params = {},
           std::string response_content_type = "text/plain");
   void Next();
-  Context *set_status(const WebServer::HTTPCodes status);
+  Context *set_status(const HTTPCodes status);
   std::string param(const std::string name);
   int send_string(const std::string str);
   void send_file(const std::string file_path);
@@ -255,7 +258,8 @@ private:
   SOCKET m_sock;
   int m_port;
   struct sockaddr_in m_addr;
-  std::unordered_map<std::string, Path> m_paths = {};
+  std::unordered_map<std::string, Path> m_paths;
+  std::vector<Path> paths;
   std::string m_file_directory;
   std::map<std::string, std::vector<PathHandler *>> m_middlewares;
 

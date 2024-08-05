@@ -1,6 +1,5 @@
 #include "libs.h"
 #include "webserver.h"
-#include <string>
 
 int WebServer::Router::accept(struct sockaddr_in *addr, int *addrlen) const {
   return ::accept(this->m_sock, (SOCKADDR *)addr, addrlen);
@@ -19,10 +18,21 @@ void WebServer::Router::handle_request(
 
   WebServer::Request request = parse_request(buf.data());
 
-  if (request.method.empty() || request.path.empty() || request.host.empty()) {
-    std::string response = RESPONSE_METHOD_NOT_ALLOWED;
+  static int count = 0;
+  std::ofstream file("req_" + std::to_string(count) + ".http");
+  file << buf.data();
+  // file.write(buf.data(), buf.size());
+  file.close();
+  count++;
 
-    error = send(sock, response.data(), response.size(), 0);
+  // std::cout << "Method: " << request.method << '\n';
+  // std::cout << "Path: " << request.path << '\n';
+  // std::cout << "Host: " << request.host << '\n';
+
+  if (request.method.empty() || request.path.empty() || request.host.empty()) {
+    std::cout << "Empty!!!!\n";
+    error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
+                 RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
     if (error == SOCKET_ERROR) {
       std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
       closesocket(sock);
@@ -50,7 +60,7 @@ void WebServer::Router::handle_request(
       is_matching_path = true;
     }
 
-    for (std::pair<std::string, Path> pair : paths) {
+    for (std::pair<std::string, Path> pair : m_paths) {
       if (!pair.second.is_dynamic) {
         continue;
       }
@@ -62,7 +72,7 @@ void WebServer::Router::handle_request(
       }
     }
   } else {
-    requested_path = paths.at(request.path);
+    requested_path = m_paths.at(request.path);
   }
 
   if (!is_matching_path) {
@@ -75,6 +85,8 @@ void WebServer::Router::handle_request(
   }
 
   if (request.method.compare(requested_path.method) != 0) {
+    std::cout << "Method not matching\n";
+    std::cout << "Method: " << request.method << '\n';
     error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
                  RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
     if (error == SOCKET_ERROR) {
@@ -96,6 +108,7 @@ void WebServer::Router::handle_request(
     }
 
     Context ctx(&sock, &request, this->m_file_directory);
+    context.raw_request = buf.data();
     requested_path.main_handler(&ctx);
     return;
   }
@@ -120,6 +133,7 @@ void WebServer::Router::handle_request(
   }
 
   Context context(&sock, &request, this->m_file_directory, params);
+  context.raw_request = buf.data();
 
   bool run_main_handler =
       this->execute_middlewares(requested_path.path, true, context);
@@ -150,7 +164,7 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
   std::istringstream stream(request);
   std::string header;
 
-  Request processed_request;
+  Request computed_request;
 
   bool isFirst = true;
   while (std::getline(stream, header, '\r')) {
@@ -159,8 +173,8 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
     }
 
     if (isFirst) {
-      std::istringstream requestLine(header);
-      requestLine >> processed_request.method >> processed_request.path;
+      std::istringstream request_line(header);
+      request_line >> computed_request.method >> computed_request.path;
       isFirst = false;
       continue;
     }
@@ -171,12 +185,19 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
 
     std::string key = trim(header.substr(0, pos));
     std::string value = trim(header.substr(pos + 1));
-    if (key == "Host") {
-      processed_request.host = value;
+
+    std::string lower_case_key = key;
+
+    for (char &ch : lower_case_key) {
+      ch = tolower(ch);
+    }
+
+    if (lower_case_key == "host") {
+      computed_request.host = value;
       continue;
     }
 
-    processed_request.headers[key].push_back(value);
+    computed_request.headers[key].push_back(value);
   }
 
   std::array<std::string, 5> methods = {"GET", "DELETE", "TRACE", "OPTIONS",
@@ -184,20 +205,24 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
 
   bool is_forbidden_method =
       std::find(std::begin(methods), std::end(methods),
-                processed_request.method) != std::end(methods);
+                computed_request.method) != std::end(methods);
 
-  if (is_forbidden_method || processed_request.headers.find("content-length") ==
-                                 processed_request.headers.end()) {
-    return processed_request;
+  if (is_forbidden_method || computed_request.headers.find("content-length") ==
+                                 computed_request.headers.end()) {
+    return computed_request;
   }
 
   size_t body_position = request.size() - 1;
-  body_position =
-      request.size() -
-      std::stoi(processed_request.headers.at("content-length").at(0));
-  processed_request.body = request.substr(body_position);
+  size_t content_length;
+  for (std::string header : computed_request.headers.at("content-length")) {
+    content_length = std::stoi(header);
+  }
 
-  return processed_request;
+  body_position = request.size() - content_length;
+
+  computed_request.body = request.substr(body_position);
+
+  return computed_request;
 };
 
 int WebServer::Router::listen(const int port, const char *address) {

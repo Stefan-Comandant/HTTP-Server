@@ -1,12 +1,14 @@
 #include "../include/libs.h"
 #include "../include/webserver.h"
+#include <vector>
 
-void middleware(WebServer::Context *ctx) {
-  std::cout << "This is middleware: The name " << ctx->param("name")
-            << " is a trash name\n";
+void cors_middleware(WebServer::Context *ctx) {
+  ctx->add_header("Access-Control-Allow-Origin", "http://localhost:3000");
+  ctx->add_header("Access-Control-Allow-Credentials", "true");
+  ctx->add_header("Access-Control-Allow-Headers", "authorization");
 
-  ctx->Next();
-};
+  ctx->set_status(WebServer::NoContent)->send_string("");
+}
 
 int main() {
   std::unique_ptr<WebServer::Router> router =
@@ -14,7 +16,7 @@ int main() {
 
   router->set_file_source_directory("public");
 
-  router->Use("/people", {middleware});
+  // router->Use("/people", {cors_middleware});
 
   router->Get("/", [](WebServer::Context *ctx) {
     std::cout << "Lois, I\'m getting a request!\n";
@@ -36,7 +38,7 @@ int main() {
   });
 
   router->Get("/image",
-              [](WebServer::Context *ctx) { ctx->send_file("bitches.png"); });
+              [](WebServer::Context *ctx) { ctx->send_file("hello.png"); });
 
   router->Get("/json", [](WebServer::Context *ctx) {
     ctx->send_string("You have no dick, no balls and no bootyhole");
@@ -59,6 +61,9 @@ int main() {
 
     ctx->send_string("Cookie");
   });
+
+  router->Get("/cors",
+              [](WebServer::Context *ctx) { ctx->send_string("CORS"); });
 
   int error = router->listen(1234, "127.0.0.1");
   if (error == SOCKET_ERROR) {
