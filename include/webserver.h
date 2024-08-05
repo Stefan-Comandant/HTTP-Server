@@ -239,18 +239,20 @@ typedef void PathHandler(Context *);
 
 struct Path {
 public:
+  PathHandler *main_handler;
+  std::vector<std::string> params;
+  bool is_dynamic = false;
   std::string method;
   std::string path;
   std::regex regex;
-  bool is_dynamic = false;
-  std::vector<std::string> params;
-  PathHandler *main_handler;
   Path();
   Path(std::string method, std::string path, PathHandler *handler,
-       std::regex regex, bool is_dynamic = false,
-       std::vector<std::string> params = {});
+       std::regex regex, std::vector<std::string> params = {});
   bool empty() const;
 };
+
+Path get_path(const std::string path, const std::string method,
+              std::vector<Path> paths, std::shared_ptr<HTTPCodes> error);
 
 class Router {
 private:
@@ -258,15 +260,13 @@ private:
   SOCKET m_sock;
   int m_port;
   struct sockaddr_in m_addr;
-  std::unordered_map<std::string, Path> m_paths;
-  std::vector<Path> paths;
+  std::vector<Path> m_paths;
   std::string m_file_directory;
   std::map<std::string, std::vector<PathHandler *>> m_middlewares;
 
 private:
   int accept(struct sockaddr_in *addr, int *addrlen) const;
-  void handle_request(SOCKET sock,
-                      const std::unordered_map<std::string, Path> &paths);
+  void handle_request(SOCKET sock);
   Request parse_request(const std::string request);
   bool set_socket_blocking(SOCKET sock, bool blocking);
   std::regex get_path_regex(const std::string path,

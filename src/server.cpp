@@ -1,6 +1,5 @@
 #include "../include/libs.h"
 #include "../include/webserver.h"
-#include <vector>
 
 void cors_middleware(WebServer::Context *ctx) {
   ctx->add_header("Access-Control-Allow-Origin", "http://localhost:3000");
@@ -47,7 +46,7 @@ int main() {
   router->Get("/people/:name", [](WebServer::Context *ctx) {
     std::cout << "The name " << ctx->param("name") << " is trash\n";
 
-    ctx->send_file("./spinner.html");
+    ctx->send_file("spinner.html");
   });
 
   router->Get("/users/:userID/friends/:friendID", [](WebServer::Context *ctx) {
@@ -64,6 +63,14 @@ int main() {
 
   router->Get("/cors",
               [](WebServer::Context *ctx) { ctx->send_string("CORS"); });
+
+  router->Get("/lorem", [](WebServer::Context *ctx) {
+    ctx->send_string("This is method GET");
+  });
+
+  router->Post("/lorem", [](WebServer::Context *ctx) {
+    ctx->send_string("This is method POST");
+  });
 
   int error = router->listen(1234, "127.0.0.1");
   if (error == SOCKET_ERROR) {

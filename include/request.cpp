@@ -1,12 +1,13 @@
 #include "libs.h"
 #include "webserver.h"
+#include <memory>
+#include <variant>
 
 int WebServer::Router::accept(struct sockaddr_in *addr, int *addrlen) const {
   return ::accept(this->m_sock, (SOCKADDR *)addr, addrlen);
 };
 
-void WebServer::Router::handle_request(
-    SOCKET sock, const std::unordered_map<std::string, Path> &paths) {
+void WebServer::Router::handle_request(SOCKET sock) {
   std::vector<char> buf(40096);
 
   int error = recv(sock, buf.data(), buf.size(), 0);
@@ -18,19 +19,14 @@ void WebServer::Router::handle_request(
 
   WebServer::Request request = parse_request(buf.data());
 
-  static int count = 0;
-  std::ofstream file("req_" + std::to_string(count) + ".http");
-  file << buf.data();
-  // file.write(buf.data(), buf.size());
-  file.close();
-  count++;
-
-  // std::cout << "Method: " << request.method << '\n';
-  // std::cout << "Path: " << request.path << '\n';
-  // std::cout << "Host: " << request.host << '\n';
+  // static int count = 0;
+  // std::ofstream file("req_" + std::to_string(count) + ".http");
+  // file << buf.data();
+  // file.close();
+  // count++;
 
   if (request.method.empty() || request.path.empty() || request.host.empty()) {
-    std::cout << "Empty!!!!\n";
+    // std::cout << "Empty!!!!\n";
     error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
                  RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
     if (error == SOCKET_ERROR) {
@@ -40,42 +36,28 @@ void WebServer::Router::handle_request(
     return;
   }
 
-  Path requested_path;
-  bool is_matching_path = true;
+  // HTTPCodes err = HTTPCodes::OK;
+  std::shared_ptr<HTTPCodes> err = std::make_shared<HTTPCodes>(HTTPCodes::OK);
+  Path requested_path =
+      get_path(request.path, request.method, this->m_paths, err);
 
-  if (paths.find(request.path) == paths.end()) {
-    size_t dot_pos = request.path.find_last_of('.');
+  size_t dot_pos = request.path.find_last_of('.');
+  if (*err == HTTPCodes::NotFound && dot_pos != std::variant_npos) {
     std::vector<char> body;
     std::string content_type;
 
-    if (dot_pos != std::variant_npos) {
-      body = get_file_contents(request.path, &content_type,
-                               this->m_file_directory);
-    }
+    body =
+        get_file_contents(request.path, &content_type, this->m_file_directory);
 
     if (!body.empty()) {
       std::string response =
           make_response_body(WebServer::OK, body, {}, content_type);
       send(sock, response.data(), response.size(), 0);
-      is_matching_path = true;
+      return;
     }
-
-    for (std::pair<std::string, Path> pair : m_paths) {
-      if (!pair.second.is_dynamic) {
-        continue;
-      }
-
-      is_matching_path = std::regex_match(request.path, pair.second.regex);
-      if (is_matching_path) {
-        requested_path = pair.second;
-        break;
-      }
-    }
-  } else {
-    requested_path = m_paths.at(request.path);
   }
 
-  if (!is_matching_path) {
+  if (*err == HTTPCodes::NotFound) {
     error = send(sock, RESPONSE_NOT_FOUND.data(), RESPONSE_NOT_FOUND.size(), 0);
     if (error == SOCKET_ERROR) {
       std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
@@ -84,9 +66,7 @@ void WebServer::Router::handle_request(
     return;
   }
 
-  if (request.method.compare(requested_path.method) != 0) {
-    std::cout << "Method not matching\n";
-    std::cout << "Method: " << request.method << '\n';
+  if (*err == HTTPCodes::MethodNotAllowed) {
     error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
                  RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
     if (error == SOCKET_ERROR) {
@@ -272,7 +252,7 @@ int WebServer::Router::listen(const int port, const char *address) {
 
         FD_SET(client, &readfds);
       } else {
-        this->handle_request(sock, this->m_paths);
+        this->handle_request(sock);
         closesocket(sock);
         FD_CLR(sock, &readfds);
       }
