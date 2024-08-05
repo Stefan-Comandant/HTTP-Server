@@ -26,7 +26,6 @@ void WebServer::Router::handle_request(SOCKET sock) {
   // count++;
 
   if (request.method.empty() || request.path.empty() || request.host.empty()) {
-    // std::cout << "Empty!!!!\n";
     error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
                  RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
     if (error == SOCKET_ERROR) {
@@ -36,7 +35,6 @@ void WebServer::Router::handle_request(SOCKET sock) {
     return;
   }
 
-  // HTTPCodes err = HTTPCodes::OK;
   std::shared_ptr<HTTPCodes> err = std::make_shared<HTTPCodes>(HTTPCodes::OK);
   Path requested_path =
       get_path(request.path, request.method, this->m_paths, err);
@@ -57,6 +55,30 @@ void WebServer::Router::handle_request(SOCKET sock) {
     }
   }
 
+  std::shared_ptr<Context> context =
+      std::make_shared<Context>(&sock, &request, this->m_file_directory);
+  context->raw_request = buf.data();
+
+  bool run_main_handler = this->execute_middlewares(request.path, context);
+  if (!run_main_handler) {
+    return;
+  }
+
+  if (run_main_handler && *err == HTTPCodes::OK && !requested_path.is_dynamic) {
+    requested_path.main_handler(context);
+    return;
+  }
+
+  // if (!requested_path.is_dynamic) {
+  //   bool run_main_handler =
+  //       this->execute_middlewares(requested_path.path, context);
+
+  //   if (run_main_handler && *err == HTTPCodes::OK) {
+  //     requested_path.main_handler(&context);
+  //     return;
+  //   }
+  // }
+
   if (*err == HTTPCodes::NotFound) {
     error = send(sock, RESPONSE_NOT_FOUND.data(), RESPONSE_NOT_FOUND.size(), 0);
     if (error == SOCKET_ERROR) {
@@ -76,22 +98,7 @@ void WebServer::Router::handle_request(SOCKET sock) {
     return;
   }
 
-  if (!requested_path.is_dynamic) {
-    // this->middlewares.find()
-    Context context(&sock, &request, this->m_file_directory);
-
-    bool run_main_handler =
-        this->execute_middlewares(requested_path.path, false, context);
-
-    if (!run_main_handler) {
-      return;
-    }
-
-    Context ctx(&sock, &request, this->m_file_directory);
-    context.raw_request = buf.data();
-    requested_path.main_handler(&ctx);
-    return;
-  }
+  std::cout << "Dynamic shit\n";
 
   // Parse the params
   std::smatch matches;
@@ -112,16 +119,33 @@ void WebServer::Router::handle_request(SOCKET sock) {
     params.insert_or_assign(key, match->str());
   }
 
-  Context context(&sock, &request, this->m_file_directory, params);
-  context.raw_request = buf.data();
+  // context.reset();
+  context = std::make_shared<Context>(&sock, &request, this->m_file_directory,
+                                      params);
 
-  bool run_main_handler =
-      this->execute_middlewares(requested_path.path, true, context);
-  if (!run_main_handler) {
+  run_main_handler = this->execute_middlewares(requested_path.path, context);
+  if (run_main_handler && *err == HTTPCodes::OK) {
+    requested_path.main_handler(context);
     return;
   }
 
-  requested_path.main_handler(&context);
+  if (*err == HTTPCodes::NotFound) {
+    error = send(sock, RESPONSE_NOT_FOUND.data(), RESPONSE_NOT_FOUND.size(), 0);
+    if (error == SOCKET_ERROR) {
+      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
+      closesocket(sock);
+    };
+    return;
+  }
+
+  if (*err == HTTPCodes::MethodNotAllowed) {
+    error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
+                 RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
+    if (error == SOCKET_ERROR) {
+      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
+      closesocket(sock);
+    };
+  }
 }
 
 std::string WebServer::trim(const std::string &str) {

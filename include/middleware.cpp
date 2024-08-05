@@ -2,7 +2,9 @@
 #include "webserver.h"
 
 bool WebServer::Router::execute_middlewares(const std::string path,
-                                            bool is_dynamic, Context &context) {
+                                            std::shared_ptr<Context> context) {
+  context->run_next_handler = true;
+
   for (std::map<std::string, std::vector<PathHandler *>>::const_iterator it =
            this->m_middlewares.begin();
        it != this->m_middlewares.end(); it++) {
@@ -11,19 +13,16 @@ bool WebServer::Router::execute_middlewares(const std::string path,
       continue;
     }
 
-    for (std::vector<PathHandler *>::const_iterator handler =
-             it->second.begin();
-         handler != it->second.end(); handler++) {
-      (*handler.base())(&context);
-      if (!context.run_next_handler) {
+    for (PathHandler *handler : it->second) {
+      context->run_next_handler = false;
+      handler(context);
+      if (!context->run_next_handler) {
         return false;
       }
-
-      context.run_next_handler = false;
     }
   }
 
-  return true;
+  return context->run_next_handler;
 }
 
 void WebServer::Router::Use(std::vector<PathHandler *> handlers) {

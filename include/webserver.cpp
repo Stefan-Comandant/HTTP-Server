@@ -93,9 +93,12 @@ std::string WebServer::make_response_body(
     const std::map<std::string, std::vector<std::string>> headers,
     const std::string content_type) {
   std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
-                         status_texts.at(status_code) + "\r\n" +
-                         "Content-Type: " + content_type +
-                         "\r\nContent-Length: " + std::to_string(body.size());
+                         status_texts.at(status_code);
+
+  if (body.size() > 0) {
+    response.append("\r\nContent-Type: " + content_type +
+                    "\r\nContent-Length: " + std::to_string(body.size()));
+  }
 
   for (std::pair<std::string, std::vector<std::string>> pair : headers) {
     for (std::string header_value : pair.second) {
@@ -104,7 +107,8 @@ std::string WebServer::make_response_body(
     }
   }
 
-  response.append("\r\n\r\n" + body);
+  if (body.size() > 0)
+    response.append("\r\n\r\n" + body);
 
   return response;
 };
@@ -114,9 +118,12 @@ std::string WebServer::make_response_body(
     const std::map<std::string, std::vector<std::string>> headers,
     const std::string content_type) {
   std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
-                         status_texts.at(status_code) + "\r\n" +
-                         "Content-Type: " + content_type +
-                         "\r\nContent-Length: " + std::to_string(body.size());
+                         status_texts.at(status_code);
+
+  if (body.size() > 0) {
+    response.append("\r\nContent-Type: " + content_type +
+                    "\r\nContent-Length: " + std::to_string(body.size()));
+  }
 
   for (std::pair<std::string, std::vector<std::string>> pair : headers) {
     for (std::string header_value : pair.second) {
@@ -126,7 +133,9 @@ std::string WebServer::make_response_body(
   }
 
   response.append("\r\n\r\n");
-  response.append(body.begin(), body.end());
+
+  if (body.size() > 0)
+    response.append(body.begin(), body.end());
 
   return response;
 };

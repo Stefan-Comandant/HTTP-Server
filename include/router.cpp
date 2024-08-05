@@ -26,6 +26,7 @@ WebServer::Router::~Router() {
   closesocket(this->m_sock);
   WSACleanup();
 };
+
 std::regex
 WebServer::Router::get_path_regex(const std::string path,
                                   std::vector<std::string> *parameter_names) {

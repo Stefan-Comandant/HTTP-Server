@@ -235,7 +235,7 @@ public:
   void set_cookie(const CookieConfig cookie);
 };
 
-typedef void PathHandler(Context *);
+typedef void PathHandler(std::shared_ptr<Context>);
 
 struct Path {
 public:
@@ -273,8 +273,8 @@ private:
                             std::vector<std::string> *parameter_names);
   void register_path(const std::string path, PathHandler *handler,
                      const std::string method);
-  bool execute_middlewares(const std::string path, bool is_dynamic,
-                           Context &context);
+  bool execute_middlewares(const std::string path,
+                           std::shared_ptr<Context> context);
 
 public:
   Router();
