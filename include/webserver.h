@@ -1,6 +1,7 @@
 #include "libs.h"
 #include <chrono>
 #include <ctime>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -235,7 +236,20 @@ public:
   void set_cookie(const CookieConfig cookie);
 };
 
-typedef void PathHandler(std::shared_ptr<Context>);
+typedef std::function<void(std::shared_ptr<Context>)> PathHandler;
+typedef std::function<bool(std::shared_ptr<Context>)> Filter;
+
+struct CORSConfig {
+  std::string allow_origins;
+  std::string allow_methods;
+  std::string allow_headers;
+  bool allow_credentials;
+  std::string expose_headers;
+  std::time_t max_age;
+  Filter *filter = nullptr;
+};
+
+PathHandler *new_cors_middleware(CORSConfig config);
 
 struct Path {
 public:
@@ -283,15 +297,15 @@ public:
   void Use(const std::string path_prefix, std::vector<PathHandler *> handlers);
   int listen(const int port, const char *address);
   bool isValidPath(const std::string path);
-  void Get(const std::string path, PathHandler *handler);
-  void Head(const std::string path, PathHandler *handler);
-  void Post(const std::string path, PathHandler *handler);
-  void Put(const std::string path, PathHandler *handler);
-  void Delete(const std::string path, PathHandler *handler);
-  void Connect(const std::string path, PathHandler *handler);
-  void Options(const std::string path, PathHandler *handler);
-  void Trace(const std::string path, PathHandler *handler);
-  void Patch(const std::string path, PathHandler *handler);
+  void Get(const std::string path, PathHandler handler);
+  void Head(const std::string path, PathHandler handler);
+  void Post(const std::string path, PathHandler handler);
+  void Put(const std::string path, PathHandler handler);
+  void Delete(const std::string path, PathHandler handler);
+  void Connect(const std::string path, PathHandler handler);
+  void Options(const std::string path, PathHandler handler);
+  void Trace(const std::string path, PathHandler handler);
+  void Patch(const std::string path, PathHandler handler);
   void set_file_source_directory(const std::string dir);
 };
 } // namespace WebServer

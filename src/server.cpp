@@ -1,19 +1,5 @@
 #include "../include/libs.h"
 #include "../include/webserver.h"
-#include <memory>
-
-void cors_middleware(std::shared_ptr<WebServer::Context> ctx) {
-  ctx->add_header("Access-Control-Allow-Origin", "http://localhost:3000");
-  ctx->add_header("Access-Control-Allow-Credentials", "true");
-  ctx->add_header("Access-Control-Allow-Headers", "authorization");
-
-  if (ctx->request->method.compare("OPTIONS") != 0) {
-    ctx->Next();
-    return;
-  }
-
-  ctx->set_status(WebServer::NoContent)->send_string("");
-}
 
 int main() {
   std::unique_ptr<WebServer::Router> router =
@@ -21,7 +7,12 @@ int main() {
 
   router->set_file_source_directory("public");
 
-  router->Use("/cors", {cors_middleware});
+  router->Use("/cors", {WebServer::new_cors_middleware(WebServer::CORSConfig{
+                           .allow_origins = "http://localhost:3000",
+                           .allow_headers = "authorization",
+                           .allow_credentials = true,
+
+                       })});
 
   router->Get("/", [](std::shared_ptr<WebServer::Context> ctx) {
     std::cout << "Lois, I\'m getting a request!\n";
@@ -71,7 +62,6 @@ int main() {
 
   router->Get("/cors", [](std::shared_ptr<WebServer::Context> ctx) {
     ctx->set_status(WebServer::HTTPCodes::OK)->send_string("CORS");
-    std::cout << "Doing the CORS shit\n";
   });
 
   router->Get("/lorem", [](std::shared_ptr<WebServer::Context> ctx) {

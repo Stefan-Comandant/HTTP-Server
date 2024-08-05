@@ -15,7 +15,7 @@ bool WebServer::Router::execute_middlewares(const std::string path,
 
     for (PathHandler *handler : it->second) {
       context->run_next_handler = false;
-      handler(context);
+      (*handler)(context);
       if (!context->run_next_handler) {
         return false;
       }

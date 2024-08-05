@@ -65,7 +65,7 @@ void WebServer::Router::handle_request(SOCKET sock) {
   }
 
   if (run_main_handler && *err == HTTPCodes::OK && !requested_path.is_dynamic) {
-    requested_path.main_handler(context);
+    (*requested_path.main_handler)(context);
     return;
   }
 
@@ -98,8 +98,6 @@ void WebServer::Router::handle_request(SOCKET sock) {
     return;
   }
 
-  std::cout << "Dynamic shit\n";
-
   // Parse the params
   std::smatch matches;
   std::regex_match(request.path, matches, requested_path.regex);
@@ -125,7 +123,7 @@ void WebServer::Router::handle_request(SOCKET sock) {
 
   run_main_handler = this->execute_middlewares(requested_path.path, context);
   if (run_main_handler && *err == HTTPCodes::OK) {
-    requested_path.main_handler(context);
+    (*requested_path.main_handler)(context);
     return;
   }
 
