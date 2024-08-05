@@ -1,5 +1,7 @@
 #include "libs.h"
 #include "webserver.h"
+#include <algorithm>
+#include <vector>
 
 bool WebServer::Router::set_socket_blocking(SOCKET sock, bool blocking) {
   u_long nonblocking_long = blocking ? 0 : 1;
@@ -24,6 +26,7 @@ WebServer::Router::~Router() {
   closesocket(this->m_sock);
   WSACleanup();
 };
+
 std::regex
 WebServer::Router::get_path_regex(const std::string path,
                                   std::vector<std::string> *parameter_names) {
@@ -33,6 +36,7 @@ WebServer::Router::get_path_regex(const std::string path,
 
   // Return back the given path if there is no dynamic segment
   if (path.find_first_of(":") == std::variant_npos) {
+    *parameter_names = {};
     return std::regex(path);
   }
 
@@ -68,12 +72,38 @@ WebServer::Router::get_path_regex(const std::string path,
 void WebServer::Router::register_path(const std::string path,
                                       PathHandler *handler,
                                       const std::string method) {
-  std::vector<std::string> parameter_names;
+  std::vector<std::string> parameter_names = {};
 
   std::regex regex = this->get_path_regex(path, &parameter_names);
 
-  this->m_paths.insert_or_assign(
-      path, Path{method, path, handler, regex, true, parameter_names});
+  std::vector<Path>::const_iterator it =
+      std::find_if(this->m_paths.begin(), this->m_paths.end(),
+                   [path, method](Path existing_path) -> bool {
+                     if (existing_path.method.compare(method) == 0 &&
+                         existing_path.path.compare(path) == 0) {
+                       return true;
+                     }
+
+                     if (existing_path.method.compare(method) == 0 &&
+                         existing_path.path.compare(path) != 0) {
+                       return false;
+                     }
+
+                     if (existing_path.method.compare(method) != 0 &&
+                         existing_path.path.compare(path) == 0) {
+                       return false;
+                     }
+
+                     return false;
+                   });
+
+  if (it == this->m_paths.end()) {
+    this->m_paths.push_back(
+        Path(method, path, handler, regex, parameter_names));
+  } else {
+    this->m_paths.insert(it,
+                         Path(method, path, handler, regex, parameter_names));
+  }
 }
 
 bool WebServer::Router::isValidPath(const std::string path) {
@@ -83,32 +113,32 @@ bool WebServer::Router::isValidPath(const std::string path) {
   return std::regex_match(path, pattern) || path.compare("/") == 0;
 }
 
-void WebServer::Router::Get(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "GET");
+void WebServer::Router::Get(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "GET");
 };
-void WebServer::Router::Head(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "HEAD");
+void WebServer::Router::Head(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "HEAD");
 };
-void WebServer::Router::Post(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "POST");
+void WebServer::Router::Post(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "POST");
 };
-void WebServer::Router::Put(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "PUT");
+void WebServer::Router::Put(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "PUT");
 };
-void WebServer::Router::Delete(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "DELETE");
+void WebServer::Router::Delete(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "DELETE");
 };
-void WebServer::Router::Connect(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "CONNECT");
+void WebServer::Router::Connect(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "CONNECT");
 };
-void WebServer::Router::Options(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "OPTIONS");
+void WebServer::Router::Options(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "OPTIONS");
 };
-void WebServer::Router::Trace(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "TRACE");
+void WebServer::Router::Trace(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "TRACE");
 };
-void WebServer::Router::Patch(const std::string path, PathHandler *handler) {
-  this->register_path(path, handler, "PATCH");
+void WebServer::Router::Patch(const std::string path, PathHandler handler) {
+  this->register_path(path, new PathHandler(handler), "PATCH");
 };
 void WebServer::Router::set_file_source_directory(const std::string dir) {
   this->m_file_directory = dir;

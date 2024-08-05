@@ -1,6 +1,9 @@
 #include "libs.h"
 #include <chrono>
 #include <ctime>
+#include <functional>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifndef WEBSERVER_H
@@ -218,12 +221,13 @@ private:
   bool run_next_handler = true;
 
 public:
-  WebServer::Request *request;
+  Request *request;
+  std::string raw_request;
   Context(SOCKET *sock, Request *request, std::string files_directory,
           std::map<std::string, std::string> params = {},
           std::string response_content_type = "text/plain");
   void Next();
-  Context *set_status(const WebServer::HTTPCodes status);
+  Context *set_status(const HTTPCodes status);
   std::string param(const std::string name);
   int send_string(const std::string str);
   void send_file(const std::string file_path);
@@ -232,22 +236,37 @@ public:
   void set_cookie(const CookieConfig cookie);
 };
 
-typedef void PathHandler(Context *);
+typedef std::function<void(std::shared_ptr<Context>)> PathHandler;
+typedef std::function<bool(std::shared_ptr<Context>)> Filter;
+
+struct CORSConfig {
+  std::string allow_origins;
+  std::string allow_methods;
+  std::string allow_headers;
+  bool allow_credentials;
+  std::string expose_headers;
+  std::time_t max_age;
+  Filter *filter = nullptr;
+};
+
+PathHandler *new_cors_middleware(CORSConfig config);
 
 struct Path {
 public:
+  PathHandler *main_handler;
+  std::vector<std::string> params;
+  bool is_dynamic = false;
   std::string method;
   std::string path;
   std::regex regex;
-  bool is_dynamic = false;
-  std::vector<std::string> params;
-  PathHandler *main_handler;
   Path();
   Path(std::string method, std::string path, PathHandler *handler,
-       std::regex regex, bool is_dynamic = false,
-       std::vector<std::string> params = {});
+       std::regex regex, std::vector<std::string> params = {});
   bool empty() const;
 };
+
+Path get_path(const std::string path, const std::string method,
+              std::vector<Path> paths, std::shared_ptr<HTTPCodes> error);
 
 class Router {
 private:
@@ -255,22 +274,21 @@ private:
   SOCKET m_sock;
   int m_port;
   struct sockaddr_in m_addr;
-  std::unordered_map<std::string, Path> m_paths = {};
+  std::vector<Path> m_paths;
   std::string m_file_directory;
   std::map<std::string, std::vector<PathHandler *>> m_middlewares;
 
 private:
   int accept(struct sockaddr_in *addr, int *addrlen) const;
-  void handle_request(SOCKET sock,
-                      const std::unordered_map<std::string, Path> &paths);
+  void handle_request(SOCKET sock);
   Request parse_request(const std::string request);
   bool set_socket_blocking(SOCKET sock, bool blocking);
   std::regex get_path_regex(const std::string path,
                             std::vector<std::string> *parameter_names);
   void register_path(const std::string path, PathHandler *handler,
                      const std::string method);
-  bool execute_middlewares(const std::string path, bool is_dynamic,
-                           Context &context);
+  bool execute_middlewares(const std::string path,
+                           std::shared_ptr<Context> context);
 
 public:
   Router();
@@ -279,15 +297,15 @@ public:
   void Use(const std::string path_prefix, std::vector<PathHandler *> handlers);
   int listen(const int port, const char *address);
   bool isValidPath(const std::string path);
-  void Get(const std::string path, PathHandler *handler);
-  void Head(const std::string path, PathHandler *handler);
-  void Post(const std::string path, PathHandler *handler);
-  void Put(const std::string path, PathHandler *handler);
-  void Delete(const std::string path, PathHandler *handler);
-  void Connect(const std::string path, PathHandler *handler);
-  void Options(const std::string path, PathHandler *handler);
-  void Trace(const std::string path, PathHandler *handler);
-  void Patch(const std::string path, PathHandler *handler);
+  void Get(const std::string path, PathHandler handler);
+  void Head(const std::string path, PathHandler handler);
+  void Post(const std::string path, PathHandler handler);
+  void Put(const std::string path, PathHandler handler);
+  void Delete(const std::string path, PathHandler handler);
+  void Connect(const std::string path, PathHandler handler);
+  void Options(const std::string path, PathHandler handler);
+  void Trace(const std::string path, PathHandler handler);
+  void Patch(const std::string path, PathHandler handler);
   void set_file_source_directory(const std::string dir);
 };
 } // namespace WebServer

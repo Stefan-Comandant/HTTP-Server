@@ -1,13 +1,13 @@
 #include "libs.h"
 #include "webserver.h"
-#include <string>
+#include <memory>
+#include <variant>
 
 int WebServer::Router::accept(struct sockaddr_in *addr, int *addrlen) const {
   return ::accept(this->m_sock, (SOCKADDR *)addr, addrlen);
 };
 
-void WebServer::Router::handle_request(
-    SOCKET sock, const std::unordered_map<std::string, Path> &paths) {
+void WebServer::Router::handle_request(SOCKET sock) {
   std::vector<char> buf(40096);
 
   int error = recv(sock, buf.data(), buf.size(), 0);
@@ -19,62 +19,13 @@ void WebServer::Router::handle_request(
 
   WebServer::Request request = parse_request(buf.data());
 
+  // static int count = 0;
+  // std::ofstream file("req_" + std::to_string(count) + ".http");
+  // file << buf.data();
+  // file.close();
+  // count++;
+
   if (request.method.empty() || request.path.empty() || request.host.empty()) {
-    std::string response = RESPONSE_METHOD_NOT_ALLOWED;
-
-    error = send(sock, response.data(), response.size(), 0);
-    if (error == SOCKET_ERROR) {
-      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
-      closesocket(sock);
-    };
-    return;
-  }
-
-  Path requested_path;
-  bool is_matching_path = true;
-
-  if (paths.find(request.path) == paths.end()) {
-    size_t dot_pos = request.path.find_last_of('.');
-    std::vector<char> body;
-    std::string content_type;
-
-    if (dot_pos != std::variant_npos) {
-      body = get_file_contents(request.path, &content_type,
-                               this->m_file_directory);
-    }
-
-    if (!body.empty()) {
-      std::string response =
-          make_response_body(WebServer::OK, body, {}, content_type);
-      send(sock, response.data(), response.size(), 0);
-      is_matching_path = true;
-    }
-
-    for (std::pair<std::string, Path> pair : paths) {
-      if (!pair.second.is_dynamic) {
-        continue;
-      }
-
-      is_matching_path = std::regex_match(request.path, pair.second.regex);
-      if (is_matching_path) {
-        requested_path = pair.second;
-        break;
-      }
-    }
-  } else {
-    requested_path = paths.at(request.path);
-  }
-
-  if (!is_matching_path) {
-    error = send(sock, RESPONSE_NOT_FOUND.data(), RESPONSE_NOT_FOUND.size(), 0);
-    if (error == SOCKET_ERROR) {
-      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
-      closesocket(sock);
-    };
-    return;
-  }
-
-  if (request.method.compare(requested_path.method) != 0) {
     error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
                  RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
     if (error == SOCKET_ERROR) {
@@ -84,19 +35,66 @@ void WebServer::Router::handle_request(
     return;
   }
 
-  if (!requested_path.is_dynamic) {
-    // this->middlewares.find()
-    Context context(&sock, &request, this->m_file_directory);
+  std::shared_ptr<HTTPCodes> err = std::make_shared<HTTPCodes>(HTTPCodes::OK);
+  Path requested_path =
+      get_path(request.path, request.method, this->m_paths, err);
 
-    bool run_main_handler =
-        this->execute_middlewares(requested_path.path, false, context);
+  size_t dot_pos = request.path.find_last_of('.');
+  if (*err == HTTPCodes::NotFound && dot_pos != std::variant_npos) {
+    std::vector<char> body;
+    std::string content_type;
 
-    if (!run_main_handler) {
+    body =
+        get_file_contents(request.path, &content_type, this->m_file_directory);
+
+    if (!body.empty()) {
+      std::string response =
+          make_response_body(WebServer::OK, body, {}, content_type);
+      send(sock, response.data(), response.size(), 0);
       return;
     }
+  }
 
-    Context ctx(&sock, &request, this->m_file_directory);
-    requested_path.main_handler(&ctx);
+  std::shared_ptr<Context> context =
+      std::make_shared<Context>(&sock, &request, this->m_file_directory);
+  context->raw_request = buf.data();
+
+  bool run_main_handler = this->execute_middlewares(request.path, context);
+  if (!run_main_handler) {
+    return;
+  }
+
+  if (run_main_handler && *err == HTTPCodes::OK && !requested_path.is_dynamic) {
+    (*requested_path.main_handler)(context);
+    return;
+  }
+
+  // if (!requested_path.is_dynamic) {
+  //   bool run_main_handler =
+  //       this->execute_middlewares(requested_path.path, context);
+
+  //   if (run_main_handler && *err == HTTPCodes::OK) {
+  //     requested_path.main_handler(&context);
+  //     return;
+  //   }
+  // }
+
+  if (*err == HTTPCodes::NotFound) {
+    error = send(sock, RESPONSE_NOT_FOUND.data(), RESPONSE_NOT_FOUND.size(), 0);
+    if (error == SOCKET_ERROR) {
+      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
+      closesocket(sock);
+    };
+    return;
+  }
+
+  if (*err == HTTPCodes::MethodNotAllowed) {
+    error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
+                 RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
+    if (error == SOCKET_ERROR) {
+      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
+      closesocket(sock);
+    };
     return;
   }
 
@@ -119,15 +117,33 @@ void WebServer::Router::handle_request(
     params.insert_or_assign(key, match->str());
   }
 
-  Context context(&sock, &request, this->m_file_directory, params);
+  // context.reset();
+  context = std::make_shared<Context>(&sock, &request, this->m_file_directory,
+                                      params);
 
-  bool run_main_handler =
-      this->execute_middlewares(requested_path.path, true, context);
-  if (!run_main_handler) {
+  run_main_handler = this->execute_middlewares(requested_path.path, context);
+  if (run_main_handler && *err == HTTPCodes::OK) {
+    (*requested_path.main_handler)(context);
     return;
   }
 
-  requested_path.main_handler(&context);
+  if (*err == HTTPCodes::NotFound) {
+    error = send(sock, RESPONSE_NOT_FOUND.data(), RESPONSE_NOT_FOUND.size(), 0);
+    if (error == SOCKET_ERROR) {
+      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
+      closesocket(sock);
+    };
+    return;
+  }
+
+  if (*err == HTTPCodes::MethodNotAllowed) {
+    error = send(sock, RESPONSE_METHOD_NOT_ALLOWED.data(),
+                 RESPONSE_METHOD_NOT_ALLOWED.size(), 0);
+    if (error == SOCKET_ERROR) {
+      std::cout << "ERROR::send() failed: " << WSAGetLastError() << '\n';
+      closesocket(sock);
+    };
+  }
 }
 
 std::string WebServer::trim(const std::string &str) {
@@ -150,7 +166,7 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
   std::istringstream stream(request);
   std::string header;
 
-  Request processed_request;
+  Request computed_request;
 
   bool isFirst = true;
   while (std::getline(stream, header, '\r')) {
@@ -159,8 +175,8 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
     }
 
     if (isFirst) {
-      std::istringstream requestLine(header);
-      requestLine >> processed_request.method >> processed_request.path;
+      std::istringstream request_line(header);
+      request_line >> computed_request.method >> computed_request.path;
       isFirst = false;
       continue;
     }
@@ -171,12 +187,19 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
 
     std::string key = trim(header.substr(0, pos));
     std::string value = trim(header.substr(pos + 1));
-    if (key == "Host") {
-      processed_request.host = value;
+
+    std::string lower_case_key = key;
+
+    for (char &ch : lower_case_key) {
+      ch = tolower(ch);
+    }
+
+    if (lower_case_key == "host") {
+      computed_request.host = value;
       continue;
     }
 
-    processed_request.headers[key].push_back(value);
+    computed_request.headers[key].push_back(value);
   }
 
   std::array<std::string, 5> methods = {"GET", "DELETE", "TRACE", "OPTIONS",
@@ -184,20 +207,24 @@ WebServer::Request WebServer::Router::parse_request(std::string request) {
 
   bool is_forbidden_method =
       std::find(std::begin(methods), std::end(methods),
-                processed_request.method) != std::end(methods);
+                computed_request.method) != std::end(methods);
 
-  if (is_forbidden_method || processed_request.headers.find("content-length") ==
-                                 processed_request.headers.end()) {
-    return processed_request;
+  if (is_forbidden_method || computed_request.headers.find("content-length") ==
+                                 computed_request.headers.end()) {
+    return computed_request;
   }
 
   size_t body_position = request.size() - 1;
-  body_position =
-      request.size() -
-      std::stoi(processed_request.headers.at("content-length").at(0));
-  processed_request.body = request.substr(body_position);
+  size_t content_length;
+  for (std::string header : computed_request.headers.at("content-length")) {
+    content_length = std::stoi(header);
+  }
 
-  return processed_request;
+  body_position = request.size() - content_length;
+
+  computed_request.body = request.substr(body_position);
+
+  return computed_request;
 };
 
 int WebServer::Router::listen(const int port, const char *address) {
@@ -247,7 +274,7 @@ int WebServer::Router::listen(const int port, const char *address) {
 
         FD_SET(client, &readfds);
       } else {
-        this->handle_request(sock, this->m_paths);
+        this->handle_request(sock);
         closesocket(sock);
         FD_CLR(sock, &readfds);
       }

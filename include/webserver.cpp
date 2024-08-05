@@ -1,4 +1,6 @@
 #include "webserver.h"
+#include <algorithm>
+#include <regex>
 #include <vector>
 
 bool WebServer::file_exists(const std::string file_name,
@@ -91,9 +93,12 @@ std::string WebServer::make_response_body(
     const std::map<std::string, std::vector<std::string>> headers,
     const std::string content_type) {
   std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
-                         status_texts.at(status_code) + "\r\n" +
-                         "Content-Type: " + content_type +
-                         "\r\nContent-Length: " + std::to_string(body.size());
+                         status_texts.at(status_code);
+
+  if (body.size() > 0) {
+    response.append("\r\nContent-Type: " + content_type +
+                    "\r\nContent-Length: " + std::to_string(body.size()));
+  }
 
   for (std::pair<std::string, std::vector<std::string>> pair : headers) {
     for (std::string header_value : pair.second) {
@@ -102,7 +107,8 @@ std::string WebServer::make_response_body(
     }
   }
 
-  response.append("\r\n\r\n" + body);
+  if (body.size() > 0)
+    response.append("\r\n\r\n" + body);
 
   return response;
 };
@@ -112,9 +118,12 @@ std::string WebServer::make_response_body(
     const std::map<std::string, std::vector<std::string>> headers,
     const std::string content_type) {
   std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
-                         status_texts.at(status_code) + "\r\n" +
-                         "Content-Type: " + content_type +
-                         "\r\nContent-Length: " + std::to_string(body.size());
+                         status_texts.at(status_code);
+
+  if (body.size() > 0) {
+    response.append("\r\nContent-Type: " + content_type +
+                    "\r\nContent-Length: " + std::to_string(body.size()));
+  }
 
   for (std::pair<std::string, std::vector<std::string>> pair : headers) {
     for (std::string header_value : pair.second) {
@@ -124,7 +133,9 @@ std::string WebServer::make_response_body(
   }
 
   response.append("\r\n\r\n");
-  response.append(body.begin(), body.end());
+
+  if (body.size() > 0)
+    response.append(body.begin(), body.end());
 
   return response;
 };
@@ -132,12 +143,46 @@ std::string WebServer::make_response_body(
 WebServer::Path::Path(){};
 
 WebServer::Path::Path(std::string method, std::string path,
-                      PathHandler *handler, std::regex regex, bool is_dynamic,
+                      PathHandler *handler, std::regex regex,
                       std::vector<std::string> params)
     : method(method), path(path), main_handler(handler), regex(regex),
-      is_dynamic(is_dynamic), params(params){};
+      params(params) {
+  this->is_dynamic = (!this->params.empty());
+};
 
 bool WebServer::Path::empty() const {
   return (this->path.empty() && this->method.empty() &&
           this->main_handler == nullptr);
 };
+
+WebServer::Path WebServer::get_path(const std::string path,
+                                    const std::string method,
+                                    std::vector<Path> paths,
+                                    std::shared_ptr<HTTPCodes> error) {
+  std::vector<Path> matching_paths{};
+
+  for (Path i : paths) {
+    if (std::regex_match(path, i.regex)) {
+      matching_paths.push_back(i);
+    }
+  }
+
+  if (matching_paths.empty()) {
+    *error = HTTPCodes::NotFound;
+    return {};
+  }
+
+  std::vector<Path>::const_iterator it = std::find_if(
+      matching_paths.begin(), matching_paths.end(), [method](Path path) {
+        const bool is_matching_method = (path.method.compare(method) == 0);
+
+        return (is_matching_method);
+      });
+
+  if (it == matching_paths.end()) {
+    *error = HTTPCodes::MethodNotAllowed;
+    return {};
+  }
+
+  return *it.base();
+}
