@@ -25,17 +25,31 @@ bool WebServer::Router::execute_middlewares(const std::string path,
   return context->run_next_handler;
 }
 
-void WebServer::Router::Use(std::vector<PathHandler *> handlers) {
+void WebServer::Router::Use(std::vector<PathHandler> handlers) {
   const std::string path_prefix = "/";
 
+  std::vector<PathHandler *> new_handlers{};
+
+  for (PathHandler handler : handlers) {
+    new_handlers.push_back(new PathHandler(handler));
+  }
+
   this->m_middlewares[path_prefix].insert(m_middlewares.at(path_prefix).end(),
-                                          handlers.begin(), handlers.end());
+                                          new_handlers.begin(),
+                                          new_handlers.end());
 }
 
 void WebServer::Router::Use(const std::string path_prefix,
-                            std::vector<PathHandler *> handlers) {
+                            std::vector<PathHandler> handlers) {
+  std::vector<PathHandler *> new_handlers{};
+
+  for (PathHandler handler : handlers) {
+    new_handlers.push_back(new PathHandler(handler));
+  }
+
   this->m_middlewares[path_prefix].insert(m_middlewares.at(path_prefix).end(),
-                                          handlers.begin(), handlers.end());
+                                          new_handlers.begin(),
+                                          new_handlers.end());
 }
 
 void WebServer::Context::Next() { this->run_next_handler = true; };

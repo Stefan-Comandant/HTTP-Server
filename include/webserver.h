@@ -250,6 +250,7 @@ struct CORSConfig {
 };
 
 PathHandler *new_cors_middleware(CORSConfig config);
+void logger_middleware(std::shared_ptr<WebServer::Context> ctx);
 
 struct Path {
 public:
@@ -293,8 +294,8 @@ private:
 public:
   Router();
   ~Router();
-  void Use(std::vector<PathHandler *> handlers);
-  void Use(const std::string path_prefix, std::vector<PathHandler *> handlers);
+  void Use(std::vector<PathHandler> handlers);
+  void Use(const std::string path_prefix, std::vector<PathHandler> handlers);
   int listen(const int port, const char *address);
   bool isValidPath(const std::string path);
   void Get(const std::string path, PathHandler handler);

@@ -7,12 +7,14 @@ int main() {
 
   router->set_file_source_directory("public");
 
-  router->Use("/cors", {WebServer::new_cors_middleware(WebServer::CORSConfig{
+  router->Use("/cors", {*WebServer::new_cors_middleware(WebServer::CORSConfig{
                            .allow_origins = "http://localhost:3000",
                            .allow_headers = "authorization",
                            .allow_credentials = true,
 
                        })});
+
+  router->Use({(WebServer::logger_middleware)});
 
   router->Get("/", [](std::shared_ptr<WebServer::Context> ctx) {
     std::cout << "Lois, I\'m getting a request!\n";

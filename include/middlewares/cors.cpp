@@ -1,5 +1,5 @@
-#include "libs.h"
-#include "webserver.h"
+#include "../libs.h"
+#include "../webserver.h"
 
 WebServer::PathHandler *
 WebServer::new_cors_middleware(WebServer::CORSConfig config) {

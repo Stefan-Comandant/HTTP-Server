@@ -1,1 +1,1 @@
-g++.exe -std=c++20 ./include/*.cpp ./src/server.cpp -lws2_32 -o ./build/server
+g++.exe -std=c++20 ./include/*.cpp ./include/middlewares/*.cpp ./src/server.cpp -lws2_32 -o ./build/server
