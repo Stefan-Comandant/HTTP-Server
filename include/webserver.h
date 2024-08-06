@@ -234,6 +234,8 @@ public:
   std::string cookies(const std::string name);
   void add_header(const std::string header, const std::string value);
   void set_cookie(const CookieConfig cookie);
+  void JSON(nlohmann::json json);
+  Context *content_type(std::string type);
 };
 
 typedef std::function<void(std::shared_ptr<Context>)> PathHandler;

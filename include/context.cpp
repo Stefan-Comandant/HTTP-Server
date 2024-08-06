@@ -1,5 +1,6 @@
 #include "libs.h"
 #include "webserver.h"
+#include <winsock2.h>
 
 WebServer::Context::Context(SOCKET *sock, Request *request,
                             std::string files_directory,
@@ -40,3 +41,19 @@ void WebServer::Context::send_file(const std::string file_path) {
                          this->m_response_content_type);
   send(*this->sock, response.data(), response.size(), 0);
 };
+
+void WebServer::Context::JSON(nlohmann::json json) {
+  std::stringstream ss;
+  ss << json;
+  this->content_type("application/json");
+
+  std::string response = make_response_body(HTTPCodes::OK, ss.str(), {},
+                                            this->m_response_content_type);
+
+  send(*this->sock, response.data(), response.size(), 0);
+};
+
+WebServer::Context *WebServer::Context::content_type(std::string content_type) {
+  this->m_response_content_type = content_type;
+  return this;
+}

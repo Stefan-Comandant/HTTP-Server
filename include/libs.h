@@ -1,3 +1,4 @@
+#include "../json/single_include/nlohmann/json.hpp"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -17,6 +18,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+using nlohmann::json;
 
 // GCC compiler expects winsock2.h to be included before windows.h
 #include <winsock2.h>
