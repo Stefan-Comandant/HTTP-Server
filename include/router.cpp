@@ -108,7 +108,7 @@ void WebServer::Router::register_path(const std::string path,
 
 bool WebServer::Router::isValidPath(const std::string path) {
   // Pattern: /:path/:path/:path....
-  std::regex pattern(R"(^\/(?:[^\/:]+|:\w+)(?:\/(?:[^\/:]+|:\w+))*$)");
+  std::regex pattern(R"((\/{1,1}([A-Za-z0-9_:=?]+))+\/{0,1})");
 
   return std::regex_match(path, pattern) || path.compare("/") == 0;
 }
