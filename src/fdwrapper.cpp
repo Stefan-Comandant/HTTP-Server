@@ -5,6 +5,7 @@
 
 FD_Wrapper::FD_Wrapper(const FD_Listen_Options options): m_fd(-1), m_options(options){
     init();
+    apply_options();
 };
 
 FD_Wrapper::~FD_Wrapper(){
@@ -70,7 +71,7 @@ void FD_Wrapper::socket(){
 #endif
 };
 
-void FD_Wrapper::listen(int port, const std::string ip_address){
+void FD_Wrapper::listen(const int port, const std::string ip_address){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }

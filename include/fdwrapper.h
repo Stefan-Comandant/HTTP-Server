@@ -1,6 +1,8 @@
 #ifndef FD_WRAPPER_H
 #define FD_WRAPPER_H
 
+#include "webserver.h"
+
 #include <string>
 #include <iostream>
 #include <stdexcept>
@@ -37,6 +39,8 @@ struct FD_Listen_Options {
 };
 
 class FD_Wrapper {
+    friend WebServer::Router;
+
 private:
     #ifdef _WIN32
         SOCKET fd;
@@ -70,7 +74,7 @@ public:
      * Set the socket to listening mode.
      * Also binds the socket to the specified port and address.
      * */
-    void listen(int port, const std::string ip_address);
+    void listen(const int port, const std::string ip_address);
 
     FD_Wrapper accept();
     /* 
