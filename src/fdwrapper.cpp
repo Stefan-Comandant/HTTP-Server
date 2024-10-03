@@ -1,7 +1,4 @@
 #include "../include/fdwrapper.h"
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
 
 FD_Wrapper::FD_Wrapper(const FD_Listen_Options options): m_fd(-1), m_options(options){
     init();

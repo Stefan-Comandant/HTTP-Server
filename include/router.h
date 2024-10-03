@@ -7,7 +7,7 @@
 class WebServer::Router{
 private:
     FD_Wrapper m_fd;
-    void parse_raw_request(const std::string raw_http_request);
+    HTTP_Request parse_raw_request(const std::string raw_http_request);
 
 public:
     Router(const FD_Listen_Options options = {});
