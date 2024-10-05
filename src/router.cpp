@@ -1,8 +1,25 @@
 #include "../include/http_request.h"
 #include "../include/router.h"
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <variant>
+
+static std::string trim(std::string str){
+    str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](char ch){
+        return !(std::isspace(ch) || ch == '\r' || ch == '\n');
+    }));
+
+    str.erase(std::find_if(str.rbegin(), str.rend(), [](char ch){
+        return !(std::isspace(ch) || ch == '\r' || ch == '\n');
+    }).base(), str.end());
+
+    return str;
+};
 
 WebServer::Router::Router(const FD_Listen_Options options){
     m_fd = FD_Wrapper(options);
@@ -34,6 +51,9 @@ void WebServer::Router::listen(const int port, const std::string address){
 
         HTTP_Request request = parse_raw_request(rbuffer);
 
+        std::string wbuffer = "Hello! Your request has successfully been parsed!";
+        client.write(wbuffer.data(), wbuffer.size());
+
         client.close();
     }
 };
@@ -44,16 +64,41 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
     
     std::string line;
 
-    // Firstly, parse the request line, which contains the method, route and HTTP version 
     ss.getline(line.data(), 32, '\r');
 
     std::istringstream req_line_ss(line.data());
-    std::cout << req_line_ss.str() << '\n';
 
+    // Firstly, parse the request line, which contains the method, route and HTTP version 
     req_line_ss >> request.method >> request.path >> request.http_version;
-    std::cout << "Method: " << request.method << std::endl;
-    std::cout << "Path: " << request.path << std::endl;
-    std::cout << "HTTP Version: " << request.http_version << std::endl;
+
+    // Start parsing the headers
+    while (std::getline(ss, line, '\r')){
+        // Trim line from while-space and \r and \r characters
+        line = trim(line);
+
+        size_t colon_char_position = line.find_first_of(':', 0);
+        if (colon_char_position == std::variant_npos){
+            continue;
+        }
+
+        std::string header_key = trim(line.substr(0, colon_char_position));
+        std::string header_value = trim(line.substr(colon_char_position + 1));
+
+        // Check if the value for the header was already set, if so, simply append the value to the comma separated list
+        try {
+            std::string value = request.headers.at(header_key);
+            if (value.at(value.size() - 1) == ','){
+                value.append(header_value);
+            } else {
+                value.append(",");
+                value.append(header_value);
+            }
+
+            request.headers[header_key] = value;
+        } catch (std::out_of_range error){
+            request.headers[header_key] = header_value;
+        };
+    }
 
     return request;
 };
