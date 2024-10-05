@@ -34,8 +34,9 @@ void WebServer::Router::listen(const int port, const std::string address){
     while (!should_close_event_loop){
         FD_Wrapper client = m_fd.accept();
 
-        std::string rbuffer(4096, '\0');
+        std::vector<char> rbuffer(4096);
         ssize_t bytes_count = client.read(rbuffer.data(), 4096);
+        rbuffer.resize(bytes_count);
 
 #ifdef _WIN32
         if (bytes_count == SOCKET_ERROR){
@@ -49,7 +50,7 @@ void WebServer::Router::listen(const int port, const std::string address){
         }
 #endif
 
-        HTTP_Request request = parse_raw_request(rbuffer);
+        HTTP_Request request = parse_raw_request(rbuffer.data());
 
         std::string wbuffer = "Hello! Your request has successfully been parsed!";
         client.write(wbuffer.data(), wbuffer.size());
@@ -99,6 +100,18 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
             request.headers[header_key] = header_value;
         };
     }
+
+    // Return early if request doesn't have body
+    if (request.method.compare("GET") == 0 || request.method.compare("HEAD") == 0){
+        return request;
+    }
+
+    try {
+        int content_length = std::atoi(request.headers.at("Content-Length").data());
+        request.body = trim(raw_http_request.substr(raw_http_request.size() - content_length));
+    } catch (std::out_of_range error){
+        return request;
+    };
 
     return request;
 };

@@ -9,4 +9,5 @@ public:
     std::string path;
     std::string http_version;
     std::unordered_map<std::string, std::string> headers;
+    std::string body;
 };
