@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
+#include <vector>
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -23,12 +24,7 @@
 #endif
 
 struct FD_Listen_Options {
-    /*
-     * If to use the fd_set structure and a non blocking event loop.
-     * Use the select syscall to get the sockets that are ready to be operated on. 
-     * */
     bool non_blocking = false;
-
     bool reuse_address = false;
     bool keep_alive = false;
     size_t buffer_size = 4096;
@@ -92,6 +88,8 @@ public:
      * May return less bytes than the length parameter;
      * */
     ssize_t write(const char *buffer, size_t length);
+
+    std::vector<FD_Wrapper> select();
 
     /* Wrapper the close syscall. */
     void close();

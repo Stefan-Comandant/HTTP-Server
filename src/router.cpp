@@ -1,22 +1,18 @@
 #include "../include/http_request.h"
 #include "../include/router.h"
 #include <algorithm>
-#include <cctype>
-#include <cstdio>
-#include <cstring>
 #include <sstream>
-#include <stdexcept>
-#include <string>
+#include <sys/epoll.h>
 #include <variant>
 
 static std::string trim(std::string str){
     str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](char ch){
-        return !(std::isspace(ch) || ch == '\r' || ch == '\n');
-    }));
+                return !(std::isspace(ch) || ch == '\r' || ch == '\n');
+                }));
 
     str.erase(std::find_if(str.rbegin(), str.rend(), [](char ch){
-        return !(std::isspace(ch) || ch == '\r' || ch == '\n');
-    }).base(), str.end());
+                return !(std::isspace(ch) || ch == '\r' || ch == '\n');
+                }).base(), str.end());
 
     return str;
 };
@@ -24,45 +20,101 @@ static std::string trim(std::string str){
 WebServer::Router::Router(const FD_Listen_Options options){
     m_fd = FD_Wrapper(options);
     m_fd.socket();
+    m_fd.apply_options();
 };
 
 void WebServer::Router::listen(const int port, const std::string address){
     m_fd.listen(port, address);
-
     bool should_close_event_loop = false;
 
-    while (!should_close_event_loop){
-        FD_Wrapper client = m_fd.accept();
+    // TODO: implement a cross-platform solution for the non-blocking event loop
+    int epfd = epoll_create(1);
 
-        std::vector<char> rbuffer(4096);
-        ssize_t bytes_count = client.read(rbuffer.data(), 4096);
-        rbuffer.resize(bytes_count);
+    struct epoll_event ev = {.events = EPOLLIN, .data = {.fd = m_fd.m_fd}};
+    int rv = epoll_ctl(epfd, EPOLL_CTL_ADD, m_fd.m_fd, &ev);
+    if (rv == -1){
+        std::cout << std::string(strerror(errno)) << '\n';
+        return;
+    }
+
+    const unsigned int MAX_EVENTS_COUNT = 256;
+
+    std::vector<epoll_event> events(MAX_EVENTS_COUNT);
+ 
+    while (!should_close_event_loop){
+        const int timeout = -1;
+ 
+        int nfds = epoll_wait(epfd, events.data(), MAX_EVENTS_COUNT, timeout);
+        if (nfds == -1){
+            perror("Failed to poll for fds");
+            return;
+        }
+ 
+        for (size_t i = 0; i < nfds; i++){
+            struct epoll_event event = events.at(i);
+            int fd = event.data.fd;
+
+            if (fd == m_fd.m_fd){
+                FD_Wrapper new_client = m_fd.accept();
+                struct epoll_event new_ev{
+                    .events = EPOLLIN | EPOLLOUT | EPOLLET,
+                    .data = epoll_data{
+                        .fd = new_client.m_fd,
+                    },
+                };
+                epoll_ctl(epfd, EPOLL_CTL_ADD, new_client.m_fd, &new_ev);
+                new_client.m_fd = -1;
+                continue;
+            }
+
+            FD_Wrapper client;
+            client.m_fd = fd;
+
+            const size_t BUFFER_SIZE = 4096;
+            std::vector<char> rbuffer(BUFFER_SIZE);
+            ssize_t bytes_count = client.read(rbuffer.data(), 4096);
 
 #ifdef _WIN32
-        if (bytes_count == SOCKET_ERROR){
-            std::cout << "ERROR::Failed to read from client: " << std::to_string(WSAGetLastError()) << std::endl;
-            continue;
-        }
+            if (bytes_count == SOCKET_ERROR){
+                std::cout << "ERROR::Failed to read from client: " << std::to_string(WSAGetLastError()) << std::endl;
+                continue;
+            }
 #else
-        if (bytes_count == -1){
-            perror("Failed to read from client");
-            continue;
-        }
+            if (bytes_count == -1){
+                perror("Failed to read from client");
+                continue;
+            }
 #endif
 
-        HTTP_Request request = parse_raw_request(rbuffer.data());
+            HTTP_Request request = parse_raw_request(rbuffer.data());
+            std::string wbuffer = "Hello! Your request has successfully been parsed!";
 
-        std::string wbuffer = "Hello! Your request has successfully been parsed!";
-        client.write(wbuffer.data(), wbuffer.size());
+            bytes_count = client.write(wbuffer.data(), wbuffer.size());
 
-        client.close();
+#ifdef _WIN32
+            if (bytes_count == SOCKET_ERROR){
+                std::cout << "ERROR::Failed to write to client: " << std::to_string(WSAGetLastError()) << std::endl;
+                continue;
+            }
+#else
+            if (bytes_count == -1){
+                perror("Failed to write to client");
+                continue;
+            }
+#endif
+
+            epoll_ctl(epfd, EPOLL_CTL_DEL, client.m_fd, {});
+
+            client.close();
+        }
     }
+    close(epfd);
 };
 
 WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string raw_http_request){
     HTTP_Request request;
     std::istringstream ss(raw_http_request);
-    
+
     std::string line;
 
     ss.getline(line.data(), 32, '\r');
@@ -74,7 +126,7 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
 
     // Start parsing the headers
     while (std::getline(ss, line, '\r')){
-        // Trim line from while-space and \r and \r characters
+        // Trim line from while-space and \r and \n characters
         line = trim(line);
 
         size_t colon_char_position = line.find_first_of(':', 0);
