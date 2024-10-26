@@ -24,7 +24,7 @@
 #endif
 
 struct FD_Listen_Options {
-    bool non_blocking = false;
+    bool non_blocking = true;
     bool reuse_address = false;
     bool keep_alive = false;
     size_t buffer_size = 4096;
