@@ -7,7 +7,7 @@
 struct WebServer::Path {
     HTTP_METHODS method;
     std::string path;
-    Handler handler;
+    WebServer::Handler main_handler;
 };
 
 #endif

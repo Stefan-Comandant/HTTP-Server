@@ -1,10 +1,14 @@
+#include "../include/context.h"
 #include "../include/http_request.h"
 #include "../include/router.h"
+#include "../include/path.h"
+
 #include <algorithm>
 #include <sstream>
 #include <sys/epoll.h>
 #include <variant>
 
+// Trim str string by removing leading and trailing '\r', '\n', ' ' characters.
 static std::string trim(std::string str){
     str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](char ch){
                 return !(std::isspace(ch) || ch == '\r' || ch == '\n');
@@ -17,8 +21,7 @@ static std::string trim(std::string str){
     return str;
 };
 
-WebServer::Router::Router(const FD_Listen_Options options){
-    m_fd = FD_Wrapper(options);
+WebServer::Router::Router(const FD_Listen_Options options): m_fd(FD_Wrapper(options)){
     m_fd.socket();
     m_fd.apply_options();
 };
@@ -28,7 +31,7 @@ void WebServer::Router::listen(const int port, const std::string address){
     bool should_close_event_loop = false;
 
     // TODO: implement a cross-platform solution for the non-blocking event loop
-    int epfd = epoll_create(1);
+    int epfd = epoll_create1(0);
 
     struct epoll_event ev = {.events = EPOLLIN, .data = {.fd = m_fd.m_fd}};
     int rv = epoll_ctl(epfd, EPOLL_CTL_ADD, m_fd.m_fd, &ev);
@@ -87,6 +90,33 @@ void WebServer::Router::listen(const int port, const std::string address){
 #endif
 
             HTTP_Request request = parse_raw_request(rbuffer.data());
+
+            bool path_exists = true;
+            bool method_allowed = true;
+
+            // Firstly check if the requested path even exists before searching through the nested map
+            auto it = m_paths.find(request.path);
+            if (it == m_paths.end()){
+                // Handle 404 Not found
+                path_exists = false;
+            }
+
+            std::map<HTTP_METHODS, Path>::const_iterator method_it;
+
+            if (path_exists){
+                method_it = it->second.find(request.method);
+                if (method_it == it->second.end()) {
+                    // Handle 405 Method Not Allowed
+                    method_allowed = false;
+                } 
+
+            }
+
+            if (path_exists && method_allowed){
+                (*method_it).second.main_handler(Context{});
+            }
+
+
             std::string wbuffer = "Hello! Your request has successfully been parsed!";
 
             bytes_count = client.write(wbuffer.data(), wbuffer.size());
@@ -111,7 +141,19 @@ void WebServer::Router::listen(const int port, const std::string address){
     close(epfd);
 };
 
-WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string raw_http_request){
+const static std::map<const std::string, WebServer::HTTP_METHODS> HTTP_METHOD_MAP = {
+    {"GET", WebServer::METHOD_GET},
+    {"HEAD", WebServer::METHOD_HEAD},
+    {"POST", WebServer::METHOD_POST},
+    {"PUT", WebServer::METHOD_PUT},
+    {"DELETE", WebServer::METHOD_DELETE},
+    {"CONNECT", WebServer::METHOD_CONNECT},
+    {"OPTIONS", WebServer::METHOD_OPTIONS},
+    {"TRACE", WebServer::METHOD_TRACE},
+    {"PATCH", WebServer::METHOD_PATCH},
+};
+
+WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string& raw_http_request){
     HTTP_Request request;
     std::istringstream ss(raw_http_request);
 
@@ -122,7 +164,13 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
     std::istringstream req_line_ss(line.data());
 
     // Firstly, parse the request line, which contains the method, route and HTTP version 
-    req_line_ss >> request.method >> request.path >> request.http_version;
+    std::string method;
+    req_line_ss >> method >> request.path >> request.http_version;
+    try {
+        request.method = HTTP_METHOD_MAP.at(method);
+    } catch (std::out_of_range err){
+        request.method = METHOD_INVALID;
+    }
 
     // Start parsing the headers
     while (std::getline(ss, line, '\r')){
@@ -154,7 +202,7 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
     }
 
     // Return early if request doesn't have body
-    if (request.method.compare("GET") == 0 || request.method.compare("HEAD") == 0){
+    if (request.method == METHOD_GET || request.method == METHOD_HEAD){
         return request;
     }
 
@@ -166,4 +214,44 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
     };
 
     return request;
+};
+
+void WebServer::Router::register_path(const std::string path, HTTP_METHODS method, Handler handler){
+    m_paths[path][method] = Path{ .method = method, .path = path, .main_handler = handler, };
+};
+
+void WebServer::Router::GET(const std::string path, Handler handler){
+    this->register_path(path, METHOD_GET, handler);
+};
+
+void WebServer::Router::HEAD(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_HEAD, handler);
+};
+
+void WebServer::Router::POST(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_POST, handler);
+};
+
+void WebServer::Router::PUT(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_PUT, handler);
+};
+
+void WebServer::Router::DELETE(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_DELETE, handler);
+};
+
+void WebServer::Router::CONNECT(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_CONNECT, handler);
+};
+
+void WebServer::Router::OPTIONS(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_OPTIONS, handler);
+};
+
+void WebServer::Router::TRACE(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_TRACE, handler);
+};
+
+void WebServer::Router::PATCH(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_PATCH, handler);
 };

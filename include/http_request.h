@@ -8,7 +8,7 @@
 
 struct WebServer::HTTP_Request{
 public:
-    std::string method;
+    HTTP_METHODS method;
     std::string path;
     std::string http_version;
     std::unordered_map<std::string, std::string> headers;
