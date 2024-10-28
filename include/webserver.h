@@ -99,8 +99,10 @@ namespace WebServer {
 
     struct Path;
 
-
     class Router;
+
+    struct FD_Listen_Options;
+    class FD_Wrapper;
 };
 
 #endif

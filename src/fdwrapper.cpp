@@ -1,14 +1,14 @@
 #include "../include/fdwrapper.h"
 
-FD_Wrapper::FD_Wrapper(const FD_Listen_Options options): m_fd(-1), m_options(options){
+WebServer::FD_Wrapper::FD_Wrapper(const FD_Listen_Options options): m_fd(-1), m_options(options){
     init();
 };
 
-FD_Wrapper::~FD_Wrapper(){
+WebServer::FD_Wrapper::~FD_Wrapper(){
     close();
 };
 
-void FD_Wrapper::apply_options(){
+void WebServer::FD_Wrapper::apply_options(){
     if (m_options.reuse_address){
         int opt = 1;
         setsockopt(m_fd, IPPROTO_TCP, SO_REUSEADDR, (char*)&opt, sizeof(opt));
@@ -53,7 +53,7 @@ void FD_Wrapper::apply_options(){
     }
 };
 
-void FD_Wrapper::socket(){
+void WebServer::FD_Wrapper::socket(){
 #ifdef _WIN32
     m_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (fd == INVALID_SOCKET){
@@ -67,7 +67,7 @@ void FD_Wrapper::socket(){
 #endif
 };
 
-void FD_Wrapper::listen(const int port, const std::string ip_address){
+void WebServer::FD_Wrapper::listen(const int port, const std::string ip_address){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }
@@ -107,7 +107,7 @@ void FD_Wrapper::listen(const int port, const std::string ip_address){
 #endif
 };
 
-FD_Wrapper FD_Wrapper::accept(){
+WebServer::FD_Wrapper WebServer::FD_Wrapper::accept(){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }
@@ -138,7 +138,7 @@ FD_Wrapper FD_Wrapper::accept(){
 #endif
 };
 
-ssize_t FD_Wrapper::read(char *buffer, size_t length){
+ssize_t WebServer::FD_Wrapper::read(char *buffer, size_t length){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }
@@ -151,7 +151,7 @@ ssize_t FD_Wrapper::read(char *buffer, size_t length){
 };
 
 
-ssize_t FD_Wrapper::write(const char *buffer, size_t length){
+ssize_t WebServer::FD_Wrapper::write(const char *buffer, size_t length){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }
@@ -165,7 +165,7 @@ ssize_t FD_Wrapper::write(const char *buffer, size_t length){
     return -1;
 };
 
-void FD_Wrapper::init(){
+void WebServer::FD_Wrapper::init(){
 #ifdef _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -174,7 +174,7 @@ void FD_Wrapper::init(){
 #endif
 };
 
-void FD_Wrapper::close(){
+void WebServer::FD_Wrapper::close(){
     if (m_fd != -1){
     #ifdef _WIN32
         closesocket(m_fd);

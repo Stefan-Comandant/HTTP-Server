@@ -23,7 +23,7 @@
     #include <netinet/tcp.h>
 #endif
 
-struct FD_Listen_Options {
+struct WebServer::FD_Listen_Options {
     bool non_blocking = true;
     bool reuse_address = false;
     bool keep_alive = false;
@@ -34,7 +34,7 @@ struct FD_Listen_Options {
     bool ipv6_support = false;
 };
 
-class FD_Wrapper {
+class WebServer::FD_Wrapper {
     friend WebServer::Router;
 
 private:
