@@ -4,7 +4,6 @@
 #include "../include/path.h"
 
 #include <algorithm>
-#include <cwchar>
 #include <sstream>
 #include <sys/epoll.h>
 #include <variant>
@@ -152,7 +151,7 @@ void WebServer::Router::listen(const int port, const std::string address){
             (*method_it).second.main_handler(Context{});
 
             if (response.size() == 0){
-                std::string response_body = "Hello! Your request has successfully been parsed!";
+                response_body = "Hello! Your request has successfully been parsed!";
                 response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::OK);
             }
 
@@ -271,8 +270,17 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string& 
         request.method = METHOD_INVALID;
     }
 
+    size_t body_starting_pos = req_line_ss.str().length();
+
     // Start parsing the headers
     while (std::getline(ss, line, '\r')){
+        if (line.find(':') == std::string::npos){
+            break;
+        }
+
+        // Account for the \r\n sequence by incrementing the character count by one
+        body_starting_pos += 1 + line.length();
+
         // Trim line from while-space and \r and \n characters
         line = trim(line);
 
@@ -300,16 +308,18 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string& 
         };
     }
 
-    // Return early if request doesn't have body
+    // Return early if request can't have a body
     if (request.method == METHOD_GET || request.method == METHOD_HEAD){
         return request;
     }
+
+    body_starting_pos += 1;
 
     try {
         int content_length = std::atoi(request.headers.at("Content-Length").data());
         request.body = trim(raw_http_request.substr(raw_http_request.size() - content_length));
     } catch (std::out_of_range error){
-        return request;
+        request.body = trim(raw_http_request.substr(body_starting_pos));
     };
 
     return request;
