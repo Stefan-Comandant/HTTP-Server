@@ -2,6 +2,7 @@
 #define WEBSERVER_H
 
 #include <functional>
+#include <string>
 
 namespace WebServer {
 

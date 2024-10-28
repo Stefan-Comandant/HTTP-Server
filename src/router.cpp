@@ -4,6 +4,7 @@
 #include "../include/path.h"
 
 #include <algorithm>
+#include <cwchar>
 #include <sstream>
 #include <sys/epoll.h>
 #include <variant>
@@ -153,6 +154,68 @@ const static std::map<const std::string, WebServer::HTTP_METHODS> HTTP_METHOD_MA
     {"PATCH", WebServer::METHOD_PATCH},
 };
 
+const std::map<WebServer::HTTP_CODES, std::string> STATUS_TEXTS_MAP {
+    {WebServer::HTTP_CODES::Continue, "Continue"},
+    {WebServer::HTTP_CODES::SwitchingProtocols, "Switching Protocols"},
+    {WebServer::HTTP_CODES::Processing, "Processing"},
+    {WebServer::HTTP_CODES::EarlyHints, "Early Hints"},
+    {WebServer::HTTP_CODES::OK, "OK"},
+    {WebServer::HTTP_CODES::Created, "Created"},
+    {WebServer::HTTP_CODES::Accepted, "Accepted"},
+    {WebServer::HTTP_CODES::NonAuthoritativeInformation, "Non Authoritative Information"},
+    {WebServer::HTTP_CODES::NoContent, "No Content"},
+    {WebServer::HTTP_CODES::ResetContent, "Reset Content"},
+    {WebServer::HTTP_CODES::PartialContent, "Partial Content"},
+    {WebServer::HTTP_CODES::MultiStatus, "Multi Status"},
+    {WebServer::HTTP_CODES::AlreadyReported, "Already Reported"},
+    {WebServer::HTTP_CODES::IMUsed, "IM Used"},
+    {WebServer::HTTP_CODES::MultipleChoices, "Multiple Choices"},
+    {WebServer::HTTP_CODES::MovedPermanently, "Moved Permanently"},
+    {WebServer::HTTP_CODES::Found, "Found"},
+    {WebServer::HTTP_CODES::SeeOther, "See Other"},
+    {WebServer::HTTP_CODES::NotModified, "NotModified"},
+    {WebServer::HTTP_CODES::TemporaryRedirect, "Temporary Redirect"},
+    {WebServer::HTTP_CODES::PermanentRedirect, "Permanent Redirect"},
+    {WebServer::HTTP_CODES::BadRequest, "Bad Request"},
+    {WebServer::HTTP_CODES::Unauthorized, "Unauthorized"},
+    {WebServer::HTTP_CODES::PaymentRequired, "Payment Required"},
+    {WebServer::HTTP_CODES::Forbidden, "Forbidden"},
+    {WebServer::HTTP_CODES::NotFound, "Not Found"},
+    {WebServer::HTTP_CODES::MethodNotAllowed, "Method Not Allowed"},
+    {WebServer::HTTP_CODES::NotAcceptable, "Not Acceptable"},
+    {WebServer::HTTP_CODES::ProxyAuthenticationRequired, "Proxy Authentication Required"},
+    {WebServer::HTTP_CODES::RequestTimeout, "Request Timeout"},
+    {WebServer::HTTP_CODES::Conflict, "Conflict"},
+    {WebServer::HTTP_CODES::Gone, "Gone"},
+    {WebServer::HTTP_CODES::LengthRequired, "Length Required"},
+    {WebServer::HTTP_CODES::PreconditionFailed, "Precondition Failed"},
+    {WebServer::HTTP_CODES::ContentTooLarge, "Content Too Large"},
+    {WebServer::HTTP_CODES::URITooLong, "URI Too Long"},
+    {WebServer::HTTP_CODES::UnsupportedMediaType, "Unsupported Media Type"},
+    {WebServer::HTTP_CODES::RangeNotSatisfiable, "Range Not Satisfiable"},
+    {WebServer::HTTP_CODES::ExpectationFailed, "Expectation Failed"},
+    {WebServer::HTTP_CODES::MisdirectedRequest, "Misdirected Request"},
+    {WebServer::HTTP_CODES::UnprocessableContent, "Unprocessable Content"},
+    {WebServer::HTTP_CODES::Locked, "Locked"},
+    {WebServer::HTTP_CODES::FailedDependency, "Failed Dependency"},
+    {WebServer::HTTP_CODES::TooEarly, "Too Early"},
+    {WebServer::HTTP_CODES::UpgradeRequired, "Upgrade Required"},
+    {WebServer::HTTP_CODES::PreconditionRequired, "Precondition Required"},
+    {WebServer::HTTP_CODES::TooManyRequests, "Too Many Requests"},
+    {WebServer::HTTP_CODES::RequestHeaderFieldsTooLarge, "Request Header Fields Too Large"},
+    {WebServer::HTTP_CODES::UnavailableForLegalReasons, "Unavailable For Legal Reasons"},
+    {WebServer::HTTP_CODES::InternalServerError, "Internal Server Error"},
+    {WebServer::HTTP_CODES::NotImplemented, "Not Implemented"},
+    {WebServer::HTTP_CODES::BadGateway, "Bad Gateway"},
+    {WebServer::HTTP_CODES::ServiceUnavailable, "Service Unavailable"},
+    {WebServer::HTTP_CODES::GatewayTimeout, "Gateway Timeout"},
+    {WebServer::HTTP_CODES::HTTPVersionNotSupported, "HTTP Version Not Supported"},
+    {WebServer::HTTP_CODES::VariantAlsoNegotiates, "Variant Also Negotiates"},
+    {WebServer::HTTP_CODES::InsufficientStorage, "Insufficient Storage"},
+    {WebServer::HTTP_CODES::LoopDetected, "Loop Detected"},
+    {WebServer::HTTP_CODES::NetworkAuthenticationRequired, "Network Authentication Required"},
+};
+
 WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string& raw_http_request){
     HTTP_Request request;
     std::istringstream ss(raw_http_request);
@@ -214,6 +277,35 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string& 
     };
 
     return request;
+};
+
+
+std::string WebServer::Router::generate_raw_http_response(std::string body, std::vector<std::string> headers, std::string http_version, WebServer::HTTP_CODES status_code, std::string status_text){
+    std::string response = "";
+    response.append(http_version + " ");
+    response.append(std::to_string(int(status_code)) + " ");
+
+    if (status_text.size() == 0){
+        status_text = STATUS_TEXTS_MAP.at(status_code);
+    } 
+
+    response.append(status_text);
+    response.append("\r\n");
+    
+
+    for (std::string& header: headers){
+        response.append(header + "\r\n");
+    };
+
+    if (body.size() == 0){
+        return response;
+    }
+
+    response.append("\r\n");
+
+    response.append(body.begin(), body.end());
+
+    return response;
 };
 
 void WebServer::Router::register_path(const std::string path, HTTP_METHODS method, Handler handler){
