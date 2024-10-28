@@ -3,7 +3,7 @@
 #include "../include/context.h"
 
 int main(){
-    WebServer::Router router(WebServer::FD_Listen_Options{.non_blocking = true, });
+    WebServer::Router router(WebServer::FD_Listen_Options{.non_blocking = true, .reuse_address = true, });
     router.GET("/", [](WebServer::Context ctx){
             std::cout << "This is from the handler\n";
             });

@@ -92,35 +92,71 @@ void WebServer::Router::listen(const int port, const std::string address){
 
             HTTP_Request request = parse_raw_request(rbuffer.data());
 
-            bool path_exists = true;
-            bool method_allowed = true;
+            std::string response = "";
+            std::string response_body = "";
 
             // Firstly check if the requested path even exists before searching through the nested map
             auto it = m_paths.find(request.path);
             if (it == m_paths.end()){
                 // Handle 404 Not found
-                path_exists = false;
+
+                response_body = "404 Not Found";
+                response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::NotFound);
+
+                bytes_count = client.write(response.data(), response.size());
+
+#ifdef _WIN32
+                if (bytes_count == SOCKET_ERROR){
+                    std::cout << "ERROR::Failed to write to client: " << std::to_string(WSAGetLastError()) << std::endl;
+                    continue;
+                }
+#else
+                if (bytes_count == -1){
+                    perror("Failed to write to client");
+                    continue;
+                }
+#endif
+                epoll_ctl(epfd, EPOLL_CTL_DEL, client.m_fd, {});
+
+                client.close();
+                continue;
             }
 
             std::map<HTTP_METHODS, Path>::const_iterator method_it;
 
-            if (path_exists){
-                method_it = it->second.find(request.method);
-                if (method_it == it->second.end()) {
-                    // Handle 405 Method Not Allowed
-                    method_allowed = false;
-                } 
+            method_it = it->second.find(request.method);
+            if (method_it == it->second.end()) {
+                // Handle 405 Method Not Allowed
+                response_body = "405 Method Not Allowed";
+                response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::MethodNotAllowed);
 
+                bytes_count = client.write(response.data(), response.size());
+
+#ifdef _WIN32
+                if (bytes_count == SOCKET_ERROR){
+                    std::cout << "ERROR::Failed to write to client: " << std::to_string(WSAGetLastError()) << std::endl;
+                    continue;
+                }
+#else
+                if (bytes_count == -1){
+                    perror("Failed to write to client");
+                    continue;
+                }
+#endif
+                epoll_ctl(epfd, EPOLL_CTL_DEL, client.m_fd, {});
+
+                client.close();
+                continue;
+            } 
+
+            (*method_it).second.main_handler(Context{});
+
+            if (response.size() == 0){
+                std::string response_body = "Hello! Your request has successfully been parsed!";
+                response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::OK);
             }
 
-            if (path_exists && method_allowed){
-                (*method_it).second.main_handler(Context{});
-            }
-
-
-            std::string wbuffer = "Hello! Your request has successfully been parsed!";
-
-            bytes_count = client.write(wbuffer.data(), wbuffer.size());
+            bytes_count = client.write(response.data(), response.size());
 
 #ifdef _WIN32
             if (bytes_count == SOCKET_ERROR){
@@ -154,7 +190,7 @@ const static std::map<const std::string, WebServer::HTTP_METHODS> HTTP_METHOD_MA
     {"PATCH", WebServer::METHOD_PATCH},
 };
 
-const std::map<WebServer::HTTP_CODES, std::string> STATUS_TEXTS_MAP {
+const static std::map<WebServer::HTTP_CODES, std::string> STATUS_TEXTS_MAP {
     {WebServer::HTTP_CODES::Continue, "Continue"},
     {WebServer::HTTP_CODES::SwitchingProtocols, "Switching Protocols"},
     {WebServer::HTTP_CODES::Processing, "Processing"},
