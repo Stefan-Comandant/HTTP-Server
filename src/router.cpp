@@ -1,10 +1,14 @@
+#include "../include/context.h"
 #include "../include/http_request.h"
 #include "../include/router.h"
+#include "../include/path.h"
+
 #include <algorithm>
 #include <sstream>
 #include <sys/epoll.h>
 #include <variant>
 
+// Trim str string by removing leading and trailing '\r', '\n', ' ' characters.
 static std::string trim(std::string str){
     str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](char ch){
                 return !(std::isspace(ch) || ch == '\r' || ch == '\n');
@@ -17,8 +21,7 @@ static std::string trim(std::string str){
     return str;
 };
 
-WebServer::Router::Router(const FD_Listen_Options options){
-    m_fd = FD_Wrapper(options);
+WebServer::Router::Router(const FD_Listen_Options options): m_fd(FD_Wrapper(options)){
     m_fd.socket();
     m_fd.apply_options();
 };
@@ -27,8 +30,8 @@ void WebServer::Router::listen(const int port, const std::string address){
     m_fd.listen(port, address);
     bool should_close_event_loop = false;
 
-    // TODO: implement a cross-platform solution for non blocking the non-blocking event loop
-    int epfd = epoll_create(1);
+    // TODO: implement a cross-platform solution for the non-blocking event loop
+    int epfd = epoll_create1(0);
 
     struct epoll_event ev = {.events = EPOLLIN, .data = {.fd = m_fd.m_fd}};
     int rv = epoll_ctl(epfd, EPOLL_CTL_ADD, m_fd.m_fd, &ev);
@@ -87,9 +90,72 @@ void WebServer::Router::listen(const int port, const std::string address){
 #endif
 
             HTTP_Request request = parse_raw_request(rbuffer.data());
-            std::string wbuffer = "Hello! Your request has successfully been parsed!";
 
-            bytes_count = client.write(wbuffer.data(), wbuffer.size());
+            std::string response = "";
+            std::string response_body = "";
+
+            // Firstly check if the requested path even exists before searching through the nested map
+            auto it = m_paths.find(request.path);
+            if (it == m_paths.end()){
+                // Handle 404 Not found
+
+                response_body = "404 Not Found";
+                response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::NotFound);
+
+                bytes_count = client.write(response.data(), response.size());
+
+#ifdef _WIN32
+                if (bytes_count == SOCKET_ERROR){
+                    std::cout << "ERROR::Failed to write to client: " << std::to_string(WSAGetLastError()) << std::endl;
+                    continue;
+                }
+#else
+                if (bytes_count == -1){
+                    perror("Failed to write to client");
+                    continue;
+                }
+#endif
+                epoll_ctl(epfd, EPOLL_CTL_DEL, client.m_fd, {});
+
+                client.close();
+                continue;
+            }
+
+            std::map<HTTP_METHODS, Path>::const_iterator method_it;
+
+            method_it = it->second.find(request.method);
+            if (method_it == it->second.end()) {
+                // Handle 405 Method Not Allowed
+                response_body = "405 Method Not Allowed";
+                response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::MethodNotAllowed);
+
+                bytes_count = client.write(response.data(), response.size());
+
+#ifdef _WIN32
+                if (bytes_count == SOCKET_ERROR){
+                    std::cout << "ERROR::Failed to write to client: " << std::to_string(WSAGetLastError()) << std::endl;
+                    continue;
+                }
+#else
+                if (bytes_count == -1){
+                    perror("Failed to write to client");
+                    continue;
+                }
+#endif
+                epoll_ctl(epfd, EPOLL_CTL_DEL, client.m_fd, {});
+
+                client.close();
+                continue;
+            } 
+
+            (*method_it).second.main_handler(Context{});
+
+            if (response.size() == 0){
+                response_body = "Hello! Your request has successfully been parsed!";
+                response = generate_raw_http_response(response_body, {"Content-Length: " + std::to_string(response_body.size())}, "HTTP/1.0", HTTP_CODES::OK);
+            }
+
+            bytes_count = client.write(response.data(), response.size());
 
 #ifdef _WIN32
             if (bytes_count == SOCKET_ERROR){
@@ -111,7 +177,81 @@ void WebServer::Router::listen(const int port, const std::string address){
     close(epfd);
 };
 
-WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string raw_http_request){
+const static std::map<const std::string, WebServer::HTTP_METHODS> HTTP_METHOD_MAP = {
+    {"GET", WebServer::METHOD_GET},
+    {"HEAD", WebServer::METHOD_HEAD},
+    {"POST", WebServer::METHOD_POST},
+    {"PUT", WebServer::METHOD_PUT},
+    {"DELETE", WebServer::METHOD_DELETE},
+    {"CONNECT", WebServer::METHOD_CONNECT},
+    {"OPTIONS", WebServer::METHOD_OPTIONS},
+    {"TRACE", WebServer::METHOD_TRACE},
+    {"PATCH", WebServer::METHOD_PATCH},
+};
+
+const static std::map<WebServer::HTTP_CODES, std::string> STATUS_TEXTS_MAP {
+    {WebServer::HTTP_CODES::Continue, "Continue"},
+    {WebServer::HTTP_CODES::SwitchingProtocols, "Switching Protocols"},
+    {WebServer::HTTP_CODES::Processing, "Processing"},
+    {WebServer::HTTP_CODES::EarlyHints, "Early Hints"},
+    {WebServer::HTTP_CODES::OK, "OK"},
+    {WebServer::HTTP_CODES::Created, "Created"},
+    {WebServer::HTTP_CODES::Accepted, "Accepted"},
+    {WebServer::HTTP_CODES::NonAuthoritativeInformation, "Non Authoritative Information"},
+    {WebServer::HTTP_CODES::NoContent, "No Content"},
+    {WebServer::HTTP_CODES::ResetContent, "Reset Content"},
+    {WebServer::HTTP_CODES::PartialContent, "Partial Content"},
+    {WebServer::HTTP_CODES::MultiStatus, "Multi Status"},
+    {WebServer::HTTP_CODES::AlreadyReported, "Already Reported"},
+    {WebServer::HTTP_CODES::IMUsed, "IM Used"},
+    {WebServer::HTTP_CODES::MultipleChoices, "Multiple Choices"},
+    {WebServer::HTTP_CODES::MovedPermanently, "Moved Permanently"},
+    {WebServer::HTTP_CODES::Found, "Found"},
+    {WebServer::HTTP_CODES::SeeOther, "See Other"},
+    {WebServer::HTTP_CODES::NotModified, "NotModified"},
+    {WebServer::HTTP_CODES::TemporaryRedirect, "Temporary Redirect"},
+    {WebServer::HTTP_CODES::PermanentRedirect, "Permanent Redirect"},
+    {WebServer::HTTP_CODES::BadRequest, "Bad Request"},
+    {WebServer::HTTP_CODES::Unauthorized, "Unauthorized"},
+    {WebServer::HTTP_CODES::PaymentRequired, "Payment Required"},
+    {WebServer::HTTP_CODES::Forbidden, "Forbidden"},
+    {WebServer::HTTP_CODES::NotFound, "Not Found"},
+    {WebServer::HTTP_CODES::MethodNotAllowed, "Method Not Allowed"},
+    {WebServer::HTTP_CODES::NotAcceptable, "Not Acceptable"},
+    {WebServer::HTTP_CODES::ProxyAuthenticationRequired, "Proxy Authentication Required"},
+    {WebServer::HTTP_CODES::RequestTimeout, "Request Timeout"},
+    {WebServer::HTTP_CODES::Conflict, "Conflict"},
+    {WebServer::HTTP_CODES::Gone, "Gone"},
+    {WebServer::HTTP_CODES::LengthRequired, "Length Required"},
+    {WebServer::HTTP_CODES::PreconditionFailed, "Precondition Failed"},
+    {WebServer::HTTP_CODES::ContentTooLarge, "Content Too Large"},
+    {WebServer::HTTP_CODES::URITooLong, "URI Too Long"},
+    {WebServer::HTTP_CODES::UnsupportedMediaType, "Unsupported Media Type"},
+    {WebServer::HTTP_CODES::RangeNotSatisfiable, "Range Not Satisfiable"},
+    {WebServer::HTTP_CODES::ExpectationFailed, "Expectation Failed"},
+    {WebServer::HTTP_CODES::MisdirectedRequest, "Misdirected Request"},
+    {WebServer::HTTP_CODES::UnprocessableContent, "Unprocessable Content"},
+    {WebServer::HTTP_CODES::Locked, "Locked"},
+    {WebServer::HTTP_CODES::FailedDependency, "Failed Dependency"},
+    {WebServer::HTTP_CODES::TooEarly, "Too Early"},
+    {WebServer::HTTP_CODES::UpgradeRequired, "Upgrade Required"},
+    {WebServer::HTTP_CODES::PreconditionRequired, "Precondition Required"},
+    {WebServer::HTTP_CODES::TooManyRequests, "Too Many Requests"},
+    {WebServer::HTTP_CODES::RequestHeaderFieldsTooLarge, "Request Header Fields Too Large"},
+    {WebServer::HTTP_CODES::UnavailableForLegalReasons, "Unavailable For Legal Reasons"},
+    {WebServer::HTTP_CODES::InternalServerError, "Internal Server Error"},
+    {WebServer::HTTP_CODES::NotImplemented, "Not Implemented"},
+    {WebServer::HTTP_CODES::BadGateway, "Bad Gateway"},
+    {WebServer::HTTP_CODES::ServiceUnavailable, "Service Unavailable"},
+    {WebServer::HTTP_CODES::GatewayTimeout, "Gateway Timeout"},
+    {WebServer::HTTP_CODES::HTTPVersionNotSupported, "HTTP Version Not Supported"},
+    {WebServer::HTTP_CODES::VariantAlsoNegotiates, "Variant Also Negotiates"},
+    {WebServer::HTTP_CODES::InsufficientStorage, "Insufficient Storage"},
+    {WebServer::HTTP_CODES::LoopDetected, "Loop Detected"},
+    {WebServer::HTTP_CODES::NetworkAuthenticationRequired, "Network Authentication Required"},
+};
+
+WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string& raw_http_request){
     HTTP_Request request;
     std::istringstream ss(raw_http_request);
 
@@ -122,10 +262,25 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
     std::istringstream req_line_ss(line.data());
 
     // Firstly, parse the request line, which contains the method, route and HTTP version 
-    req_line_ss >> request.method >> request.path >> request.http_version;
+    std::string method;
+    req_line_ss >> method >> request.path >> request.http_version;
+    try {
+        request.method = HTTP_METHOD_MAP.at(method);
+    } catch (std::out_of_range err){
+        request.method = METHOD_INVALID;
+    }
+
+    size_t body_starting_pos = req_line_ss.str().length();
 
     // Start parsing the headers
     while (std::getline(ss, line, '\r')){
+        if (line.find(':') == std::string::npos){
+            break;
+        }
+
+        // Account for the \r\n sequence by incrementing the character count by one
+        body_starting_pos += 1 + line.length();
+
         // Trim line from while-space and \r and \n characters
         line = trim(line);
 
@@ -153,17 +308,88 @@ WebServer::HTTP_Request WebServer::Router::parse_raw_request(const std::string r
         };
     }
 
-    // Return early if request doesn't have body
-    if (request.method.compare("GET") == 0 || request.method.compare("HEAD") == 0){
+    // Return early if request can't have a body
+    if (request.method == METHOD_GET || request.method == METHOD_HEAD){
         return request;
     }
+
+    body_starting_pos += 1;
 
     try {
         int content_length = std::atoi(request.headers.at("Content-Length").data());
         request.body = trim(raw_http_request.substr(raw_http_request.size() - content_length));
     } catch (std::out_of_range error){
-        return request;
+        request.body = trim(raw_http_request.substr(body_starting_pos));
     };
 
     return request;
+};
+
+
+std::string WebServer::Router::generate_raw_http_response(std::string body, std::vector<std::string> headers, std::string http_version, WebServer::HTTP_CODES status_code, std::string status_text){
+    std::string response = "";
+    response.append(http_version + " ");
+    response.append(std::to_string(int(status_code)) + " ");
+
+    if (status_text.size() == 0){
+        status_text = STATUS_TEXTS_MAP.at(status_code);
+    } 
+
+    response.append(status_text);
+    response.append("\r\n");
+    
+
+    for (std::string& header: headers){
+        response.append(header + "\r\n");
+    };
+
+    if (body.size() == 0){
+        return response;
+    }
+
+    response.append("\r\n");
+
+    response.append(body.begin(), body.end());
+
+    return response;
+};
+
+void WebServer::Router::register_path(const std::string path, HTTP_METHODS method, Handler handler){
+    m_paths[path][method] = Path{ .method = method, .path = path, .main_handler = handler, };
+};
+
+void WebServer::Router::GET(const std::string path, Handler handler){
+    this->register_path(path, METHOD_GET, handler);
+};
+
+void WebServer::Router::HEAD(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_HEAD, handler);
+};
+
+void WebServer::Router::POST(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_POST, handler);
+};
+
+void WebServer::Router::PUT(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_PUT, handler);
+};
+
+void WebServer::Router::DELETE(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_DELETE, handler);
+};
+
+void WebServer::Router::CONNECT(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_CONNECT, handler);
+};
+
+void WebServer::Router::OPTIONS(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_OPTIONS, handler);
+};
+
+void WebServer::Router::TRACE(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_TRACE, handler);
+};
+
+void WebServer::Router::PATCH(const std::string path, const Handler handler){
+    this->register_path(path, METHOD_PATCH, handler);
 };
