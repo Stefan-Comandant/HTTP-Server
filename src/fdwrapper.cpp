@@ -1,4 +1,5 @@
 #include "../include/fdwrapper.h"
+#include <sys/socket.h>
 
 WebServer::FD_Wrapper::FD_Wrapper(const FD_Listen_Options options): m_fd(-1), m_options(options){
     init();
@@ -138,31 +139,26 @@ WebServer::FD_Wrapper WebServer::FD_Wrapper::accept(){
 #endif
 };
 
-ssize_t WebServer::FD_Wrapper::read(char *buffer, size_t length){
+ssize_t WebServer::FD_Wrapper::read(char *buffer, size_t length, int flags){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }
 
-#ifdef _WIN32
-    return ::recv(m_fd, buffer, length, 0);
-#else
-    return ::read(m_fd, buffer, length);
-#endif
+    ssize_t rv = ::recv(m_fd, buffer, length, MSG_NOSIGNAL | flags);
+
+    return (rv < 0 ? -1: rv);
 };
 
 
-ssize_t WebServer::FD_Wrapper::write(const char *buffer, size_t length){
+ssize_t WebServer::FD_Wrapper::write(const char *buffer, size_t length, int flags){
     if (m_fd == -1){
         throw std::runtime_error("Socket not created.");
     }
 
-#ifdef _WIN32
-    return ::send(m_fd, buffer, length, 0);
-#else
-    return ::write(m_fd, buffer, length);
-#endif
+    ssize_t rv = ::send(m_fd, buffer, length, MSG_NOSIGNAL | flags);
 
-    return -1;
+    return (rv < 0 ? -1: rv);
+
 };
 
 void WebServer::FD_Wrapper::init(){

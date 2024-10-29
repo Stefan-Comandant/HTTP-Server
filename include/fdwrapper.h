@@ -76,18 +76,18 @@ public:
     /* 
      * Wrapper for the read syscall.
      * If successful, returns the number of bytes read.
-     * Return value of -1 indicates an arror; errno is set to indicate the specific error.
+     * Return value of -1 indicates an error; Use WSAGetLastError() for Windows and use errno for the rest.
      * May return less bytes than the length parameter.
      * */
-    ssize_t read(char *buffer, size_t length);
+    ssize_t read(char *buffer, size_t length, int flags = 0);
 
     /* 
      * Wrapper for the read syscall.
      * If successful, returns the number of bytes written.
-     * Return value of -1 indicates an arror; errno is set to indicate the specific error.
+     * Return value of -1 indicates an error; Use WSAGetLastError() for Windows and use errno for the rest.
      * May return less bytes than the length parameter;
      * */
-    ssize_t write(const char *buffer, size_t length);
+    ssize_t write(const char *buffer, size_t length, int flags = 0);
 
     std::vector<FD_Wrapper> select();
 
